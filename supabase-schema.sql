@@ -1,4 +1,4 @@
--- 1. Buat Tabel Posts
+-- 1. Create Posts Table
 create table if not exists public.posts (
   id uuid default gen_random_uuid() primary key,
   slug text unique not null,
@@ -9,10 +9,10 @@ create table if not exists public.posts (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Index slug untuk query cepat
+-- Index for fast lookup by slug
 create index if not exists posts_slug_idx on public.posts (slug);
 
--- 2. Buat Tabel Comments
+-- 2. Create Comments Table
 create table if not exists public.comments (
   id uuid default gen_random_uuid() primary key,
   post_slug text not null references public.posts(slug) on delete cascade,
@@ -22,46 +22,67 @@ create table if not exists public.comments (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Index post_slug untuk query komentar per post
+-- Index for fast lookup by post_slug
 create index if not exists comments_post_slug_idx on public.comments (post_slug);
 
--- 3. Aktifkan Row Level Security (RLS)
+-- 3. Create App Configuration Table (stores admin email securely in database)
+create table if not exists public.app_config (
+  key text primary key,
+  value text not null
+);
+
+-- Insert placeholder admin email (replace with your real admin email in Supabase)
+insert into public.app_config (key, value)
+values ('admin_email', 'admin@example.com')
+on conflict (key) do nothing;
+
+-- 4. Enable Row Level Security (RLS)
 alter table public.posts enable row level security;
 alter table public.comments enable row level security;
+alter table public.app_config enable row level security;
 
--- 4. Kebijakan RLS untuk Posts:
--- Siapa saja (anon & authenticated) boleh membaca artikel
-create policy "Posts dapat dibaca oleh publik"
+-- Helper function to check if current user is admin
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1
+    from public.app_config
+    where key = 'admin_email'
+      and value = auth.jwt() ->> 'email'
+  );
+$$;
+
+-- 5. RLS Policies for Posts
+create policy "Posts are publicly readable"
   on public.posts for select
   using (true);
 
--- Hanya admin (email: r86571601@gmail.com) yang boleh menambah artikel
-create policy "Admin boleh menambah post"
+create policy "Admin can insert posts"
   on public.posts for insert
   to authenticated
-  with check (auth.jwt() ->> 'email' = 'r86571601@gmail.com');
+  with check (public.is_admin());
 
--- Hanya admin yang boleh mengedit artikel
-create policy "Admin boleh mengubah post"
+create policy "Admin can update posts"
   on public.posts for update
   to authenticated
-  using (auth.jwt() ->> 'email' = 'r86571601@gmail.com')
-  with check (auth.jwt() ->> 'email' = 'r86571601@gmail.com');
+  using (public.is_admin())
+  with check (public.is_admin());
 
--- Hanya admin yang boleh menghapus artikel
-create policy "Admin boleh menghapus post"
+create policy "Admin can delete posts"
   on public.posts for delete
   to authenticated
-  using (auth.jwt() ->> 'email' = 'r86571601@gmail.com');
+  using (public.is_admin());
 
--- 5. Kebijakan RLS untuk Comments:
--- Siapa saja boleh membaca komentar
-create policy "Komentar dapat dibaca oleh publik"
+-- 6. RLS Policies for Comments
+create policy "Comments are publicly readable"
   on public.comments for select
   using (true);
 
--- User yang login (authenticated) boleh mengirim komentar
-create policy "User terautentikasi boleh mengirim komentar"
+create policy "Authenticated users can post comments"
   on public.comments for insert
   to authenticated
   with check (
@@ -69,20 +90,25 @@ create policy "User terautentikasi boleh mengirim komentar"
     auth.jwt() ->> 'email' = user_email
   );
 
--- Pemilik komentar atau admin boleh menghapus komentar
-create policy "Pemilik atau admin boleh menghapus komentar"
+create policy "Authors or admin can delete comments"
   on public.comments for delete
   to authenticated
   using (
     auth.uid() = user_id or
-    auth.jwt() ->> 'email' = 'r86571601@gmail.com'
+    public.is_admin()
   );
 
--- Sample Data (Opsional)
+-- 7. RLS Policies for App Config
+create policy "App config readable by authenticated users"
+  on public.app_config for select
+  to authenticated
+  using (true);
+
+-- Sample starter post
 insert into public.posts (slug, title, summary, content)
 values (
-  'halo-dunia',
-  'Halo Dunia!',
-  'Artikel pertama di blog satirr ai menggunakan Astro dan Supabase.',
-  '# Halo Dunia!\n\nSelamat datang di blog **satirr ai** yang baru.\n\nSistem ini sekarang menggunakan **Astro** dan **Supabase** untuk backend database serta autentikasi.\n\n> Admin dapat langsung menulis postingan baru melalui halaman browser tanpa perlu git push manual setiap kali posting!\n\nKalian juga dapat memberikan komentar di bawah.'
+  'hello-world',
+  'Hello World',
+  'Welcome to the new satirr ai blog built with Astro and Supabase.',
+  '# Hello World\n\nWelcome to the updated **satirr ai** blog.\n\nThis site is built with **Astro** and powered by **Supabase** for database storage and user authentication.\n\n> Authors can publish and manage posts directly through the browser without needing manual git pushes.\n\nFeel free to join the conversation in the comments section below.'
 ) on conflict (slug) do nothing;

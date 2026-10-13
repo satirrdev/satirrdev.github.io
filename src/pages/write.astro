@@ -2,51 +2,51 @@
 import Layout from '../layouts/Layout.astro';
 ---
 
-<Layout title="Tulis Post — satirr ai">
+<Layout title="New Post — satirr ai">
   <div class="wrap">
     <div id="auth-check" style="color: var(--text-secondary); font-size: 15px;">
-      Memeriksa hak akses admin...
+      Checking authorization...
     </div>
 
     <div id="unauthorized" style="display: none; color: var(--text-secondary);">
-      <h1>Akses Ditolak</h1>
-      <p>Hanya admin (r86571601@gmail.com) yang dapat menulis artikel di blog ini.</p>
-      <p><a href="/login">Login sebagai admin</a> atau kembali ke <a href="/">halaman utama</a>.</p>
+      <h1>Access Restricted</h1>
+      <p>Only the site administrator can create new posts.</p>
+      <p><a href="/login">Sign in</a> with the authorized account or return to the <a href="/">homepage</a>.</p>
     </div>
 
     <div id="editor-container" style="display: none;">
-      <h1 style="margin-bottom: 24px;">Tulis Post Baru</h1>
+      <h1 style="margin-bottom: 24px;">New Post</h1>
 
       <form id="write-form">
         <div style="margin-bottom: 20px;">
-          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Judul</label>
-          <input type="text" id="post-title-input" placeholder="Misal: Membangun Web Tanpa Pusing" required />
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Title</label>
+          <input type="text" id="post-title-input" placeholder="e.g. Building Static Blogs with Dynamic Powers" required />
         </div>
 
         <div style="margin-bottom: 20px;">
-          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Slug URL</label>
-          <input type="text" id="post-slug-input" placeholder="membangun-web-tanpa-pusing" required />
-          <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0;">Otomatis dibuat dari judul, bisa disesuaikan.</p>
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">URL Slug</label>
+          <input type="text" id="post-slug-input" placeholder="building-static-blogs" required />
+          <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0;">Generated automatically from title, editable if needed.</p>
         </div>
 
         <div style="margin-bottom: 20px;">
-          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Ringkasan (Satu Baris)</label>
-          <input type="text" id="post-summary-input" placeholder="Catatan singkat tentang kesederhanaan membuat website." required />
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Summary (Single line)</label>
+          <input type="text" id="post-summary-input" placeholder="A brief one-line overview of the topic." required />
         </div>
 
         <div style="margin-bottom: 24px;">
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-            <label style="font-weight: 600; font-size: 14px;">Konten (Markdown)</label>
-            <button type="button" id="btn-toggle-preview" style="background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px;">Lihat Preview</button>
+            <label style="font-weight: 600; font-size: 14px;">Content (Markdown)</label>
+            <button type="button" id="btn-toggle-preview" style="background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px;">Preview</button>
           </div>
-          <textarea id="post-content-input" rows="14" placeholder="Tulis isi tulisan kamu di sini menggunakan format Markdown..." required></textarea>
+          <textarea id="post-content-input" rows="14" placeholder="Write your post content in Markdown format..." required></textarea>
           
           <div id="preview-box" class="markdown-body" style="display: none; margin-top: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface);"></div>
         </div>
 
         <div style="display: flex; gap: 12px; align-items: center;">
-          <button type="submit" class="btn-primary" id="btn-publish">Publikasikan Post</button>
-          <a href="/" style="font-size: 14px; color: var(--text-secondary);">Batal</a>
+          <button type="submit" class="btn-primary" id="btn-publish">Publish post</button>
+          <a href="/" style="font-size: 14px; color: var(--text-secondary);">Cancel</a>
         </div>
       </form>
     </div>
@@ -65,7 +65,7 @@ import Layout from '../layouts/Layout.astro';
 
     authCheck.style.display = 'none';
 
-    if (!session || !session.user || session.user.email !== ADMIN_EMAIL) {
+    if (!session || !session.user || !ADMIN_EMAIL || session.user.email !== ADMIN_EMAIL) {
       unauthorized.style.display = 'block';
       return;
     }
@@ -92,7 +92,6 @@ import Layout from '../layouts/Layout.astro';
     const form = document.getElementById('write-form') as HTMLFormElement;
     const publishBtn = document.getElementById('btn-publish') as HTMLButtonElement;
 
-    // Otomatis buat slug saat mengetik judul
     let isSlugManual = false;
     titleInput.addEventListener('input', () => {
       if (!isSlugManual) {
@@ -104,22 +103,20 @@ import Layout from '../layouts/Layout.astro';
       isSlugManual = slugInput.value.length > 0;
     });
 
-    // Toggle Preview
     let showPreview = false;
     previewBtn.addEventListener('click', () => {
       showPreview = !showPreview;
       if (showPreview) {
-        previewBtn.textContent = 'Tutup Preview';
+        previewBtn.textContent = 'Hide Preview';
         previewBox.style.display = 'block';
-        const parsed = marked.parse(contentInput.value || '*Belum ada konten.*');
+        const parsed = marked.parse(contentInput.value || '*No content yet.*');
         previewBox.innerHTML = typeof parsed === 'string' ? parsed : '';
       } else {
-        previewBtn.textContent = 'Lihat Preview';
+        previewBtn.textContent = 'Preview';
         previewBox.style.display = 'none';
       }
     });
 
-    // Submit Post ke Supabase
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -129,12 +126,12 @@ import Layout from '../layouts/Layout.astro';
       const content = contentInput.value.trim();
 
       if (!title || !slug || !content) {
-        alert('Mohon lengkapi semua kolom.');
+        alert('Please complete all required fields.');
         return;
       }
 
       publishBtn.disabled = true;
-      publishBtn.textContent = 'Mempublikasikan...';
+      publishBtn.textContent = 'Publishing...';
 
       const { error } = await supabase.from('posts').insert({
         title,
@@ -144,16 +141,16 @@ import Layout from '../layouts/Layout.astro';
       });
 
       publishBtn.disabled = false;
-      publishBtn.textContent = 'Publikasikan Post';
+      publishBtn.textContent = 'Publish post';
 
       if (error) {
         if (error.code === '23505') {
-          alert('Slug URL sudah dipakai oleh artikel lain. Silakan ubah slug-nya.');
+          alert('This URL slug is already taken. Please choose another.');
         } else {
-          alert('Gagal mempublikasikan post: ' + error.message);
+          alert('Could not publish post: ' + error.message);
         }
       } else {
-        alert('Post berhasil dipublikasikan!');
+        alert('Post published successfully.');
         window.location.href = `/post?slug=${encodeURIComponent(slug)}`;
       }
     });

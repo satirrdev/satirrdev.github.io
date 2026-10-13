@@ -5,12 +5,12 @@ import Layout from '../layouts/Layout.astro';
 <Layout title="Post — satirr ai">
   <div class="wrap">
     <div id="loading" style="color: var(--text-secondary); font-size: 15px;">
-      Memuat tulisan...
+      Loading post...
     </div>
 
     <div id="not-found" style="display: none; color: var(--text-secondary);">
-      <h1>Tulisan tidak ditemukan</h1>
-      <p>Artikel mungkin sudah dihapus atau slug salah. Kembali ke <a href="/">daftar post</a>.</p>
+      <h1>Post not found</h1>
+      <p>The post you are looking for may have been deleted or the URL is incorrect. Return to the <a href="/">homepage</a>.</p>
     </div>
 
     <article id="article-container" style="display: none;">
@@ -19,36 +19,36 @@ import Layout from '../layouts/Layout.astro';
       
       <div class="markdown-body" id="post-content"></div>
 
-      <!-- Action admin (Hapus/Edit post) -->
+      <!-- Admin Actions -->
       <div id="admin-actions" style="display: none; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border);">
-        <button id="btn-delete-post" class="btn-secondary" style="color: var(--danger); font-size: 13px;">Hapus Post Ini</button>
+        <button id="btn-delete-post" class="btn-secondary" style="color: var(--danger); font-size: 13px;">Delete this post</button>
       </div>
 
-      <!-- Bagian Komentar -->
+      <!-- Comments Section -->
       <section style="margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--border);">
-        <h2 style="font-size: 1.3rem; margin-top: 0; margin-bottom: 24px;">Komentar</h2>
+        <h2 style="font-size: 1.3rem; margin-top: 0; margin-bottom: 24px;">Discussion</h2>
 
-        <!-- Form Komentar -->
+        <!-- Comment Form -->
         <div id="comment-form-container" style="margin-bottom: 32px;">
           <form id="comment-form">
             <textarea 
               id="comment-input" 
-              placeholder="Tulis komentar kamu di sini..." 
+              placeholder="Leave a comment..." 
               rows="3" 
               required
               style="margin-bottom: 12px;"
             ></textarea>
-            <button type="submit" class="btn-primary" id="btn-submit-comment">Kirim Komentar</button>
+            <button type="submit" class="btn-primary" id="btn-submit-comment">Post comment</button>
           </form>
         </div>
 
         <div id="login-to-comment" style="display: none; margin-bottom: 32px; font-size: 15px; color: var(--text-secondary);">
-          <a href="/login">Login</a> untuk ikut berdiskusi dan memberikan komentar.
+          <a href="/login">Sign in</a> to join the conversation and leave a reply.
         </div>
 
-        <!-- Daftar Komentar -->
-        <div id="comments-loading" style="color: var(--text-secondary); font-size: 14px;">Memuat komentar...</div>
-        <div id="comments-empty" style="display: none; color: var(--text-secondary); font-size: 14px;">Belum ada komentar. Jadilah yang pertama berkomentar!</div>
+        <!-- Comments List -->
+        <div id="comments-loading" style="color: var(--text-secondary); font-size: 14px;">Loading comments...</div>
+        <div id="comments-empty" style="display: none; color: var(--text-secondary); font-size: 14px;">No comments yet. Start the conversation!</div>
         <ul id="comments-list" style="list-style: none; padding: 0; margin: 0;"></ul>
       </section>
     </article>
@@ -71,12 +71,10 @@ import Layout from '../layouts/Layout.astro';
       return;
     }
 
-    // Ambil auth session
     const { data: { session } } = await supabase.auth.getSession();
     currentUser = session?.user || null;
     setupCommentAuthUI();
 
-    // Ambil artikel
     try {
       const { data: post, error } = await supabase
         .from('posts')
@@ -152,8 +150,8 @@ import Layout from '../layouts/Layout.astro';
 
     empty.style.display = 'none';
     list.innerHTML = comments.map(c => {
-      const isOwner = currentUser && (currentUser.id === c.user_id || currentUser.email === ADMIN_EMAIL);
-      const dateStr = new Date(c.created_at).toLocaleString('id-ID', {
+      const isOwner = currentUser && (currentUser.id === c.user_id || (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL));
+      const dateStr = new Date(c.created_at).toLocaleString('en-US', {
         dateStyle: 'medium',
         timeStyle: 'short'
       });
@@ -164,7 +162,7 @@ import Layout from '../layouts/Layout.astro';
             <span style="font-weight: 600; font-size: 14px;">${escapeHtml(c.user_email.split('@')[0])}</span>
             <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center;">
               <span>${dateStr}</span>
-              ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Hapus</button>` : ''}
+              ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Delete</button>` : ''}
             </div>
           </div>
           <p style="margin: 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(c.content)}</p>
@@ -172,18 +170,16 @@ import Layout from '../layouts/Layout.astro';
       `;
     }).join('');
 
-    // Listener tombol hapus komentar
     document.querySelectorAll('.btn-del-comment').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
-        if (!confirm('Yakin ingin menghapus komentar ini?')) return;
+        if (!confirm('Are you sure you want to delete this comment?')) return;
         await supabase.from('comments').delete().eq('id', id);
         loadComments();
       });
     });
   }
 
-  // Handle submit komentar
   const commentForm = document.getElementById('comment-form');
   if (commentForm) {
     commentForm.addEventListener('submit', async (e) => {
@@ -196,7 +192,7 @@ import Layout from '../layouts/Layout.astro';
 
       const submitBtn = document.getElementById('btn-submit-comment') as HTMLButtonElement;
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Mengirim...';
+      submitBtn.textContent = 'Posting...';
 
       const { error } = await supabase.from('comments').insert({
         post_slug: slug,
@@ -206,10 +202,10 @@ import Layout from '../layouts/Layout.astro';
       });
 
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Kirim Komentar';
+      submitBtn.textContent = 'Post comment';
 
       if (error) {
-        alert('Gagal mengirim komentar: ' + error.message);
+        alert('Could not post comment: ' + error.message);
       } else {
         input.value = '';
         loadComments();
@@ -218,17 +214,17 @@ import Layout from '../layouts/Layout.astro';
   }
 
   function setupAdminActions() {
-    if (currentUser && currentUser.email === ADMIN_EMAIL) {
+    if (currentUser && ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL) {
       const actions = document.getElementById('admin-actions')!;
       actions.style.display = 'block';
 
       document.getElementById('btn-delete-post')?.addEventListener('click', async () => {
-        if (!confirm(`Hapus tulisan "${currentPost.title}" secara permanen?`)) return;
+        if (!confirm(`Permanently delete post "${currentPost.title}"?`)) return;
         const { error } = await supabase.from('posts').delete().eq('id', currentPost.id);
         if (error) {
-          alert('Gagal menghapus: ' + error.message);
+          alert('Failed to delete post: ' + error.message);
         } else {
-          alert('Tulisan berhasil dihapus.');
+          alert('Post deleted.');
           window.location.href = '/';
         }
       });

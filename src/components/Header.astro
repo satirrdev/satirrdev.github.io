@@ -6,11 +6,10 @@
     <nav class="nav">
       <a href="/">Posts</a>
       <a href="/about">About</a>
-      <a href="/write" id="nav-write" style="display: none;">Tulis</a>
+      <a href="/write" id="nav-write" style="display: none;">Write</a>
       
-      <!-- Container status auth diisi via client-side script -->
       <div id="auth-status" class="user-badge">
-        <a href="/login" id="nav-login">Login</a>
+        <a href="/login" id="nav-login">Sign in</a>
       </div>
     </nav>
   </div>
@@ -28,7 +27,7 @@
 
     if (session && session.user) {
       const email = session.user.email || 'User';
-      const isAdmin = email === ADMIN_EMAIL;
+      const isAdmin = Boolean(ADMIN_EMAIL && email === ADMIN_EMAIL);
 
       if (navWrite) {
         navWrite.style.display = isAdmin ? 'inline-block' : 'none';
@@ -36,7 +35,7 @@
 
       authStatus.innerHTML = `
         <span title="${email}">${isAdmin ? 'Admin' : email.split('@')[0]}</span>
-        <button id="btn-logout" type="button">Logout</button>
+        <button id="btn-logout" type="button">Sign out</button>
       `;
 
       const btnLogout = document.getElementById('btn-logout');
@@ -48,11 +47,10 @@
       }
     } else {
       if (navWrite) navWrite.style.display = 'none';
-      authStatus.innerHTML = `<a href="/login" id="nav-login">Login</a>`;
+      authStatus.innerHTML = `<a href="/login" id="nav-login">Sign in</a>`;
     }
   }
 
-  // Jalankan saat halaman siap & dengarkan perubahan sesi
   updateAuthUI();
   supabase.auth.onAuthStateChange(() => {
     updateAuthUI();

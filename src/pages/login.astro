@@ -2,35 +2,35 @@
 import Layout from '../layouts/Layout.astro';
 ---
 
-<Layout title="Login — satirr ai">
+<Layout title="Sign In — satirr ai">
   <div class="wrap" style="max-width: 420px; margin: 0 auto;">
-    <h1 id="auth-title" style="margin-bottom: 8px;">Login</h1>
+    <h1 id="auth-title" style="margin-bottom: 8px;">Sign in</h1>
     <p class="intro" id="auth-subtitle" style="color: var(--text-secondary); margin-bottom: 28px;">
-      Masuk untuk dapat memberikan komentar atau mengelola tulisan.
+      Sign in to join the conversation and leave comments.
     </p>
 
-    <!-- Notifikasi Error/Info -->
+    <!-- Error/Notice box -->
     <div id="auth-msg" style="display: none; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin-bottom: 20px;"></div>
 
     <form id="auth-form">
       <div style="margin-bottom: 16px;">
         <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Email</label>
-        <input type="email" id="email" placeholder="nama@email.com" required />
+        <input type="email" id="email" placeholder="you@example.com" required />
       </div>
 
       <div style="margin-bottom: 24px;">
         <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Password</label>
-        <input type="password" id="password" placeholder="Minimal 6 karakter" required minlength="6" />
+        <input type="password" id="password" placeholder="At least 6 characters" required minlength="6" />
       </div>
 
       <button type="submit" class="btn-primary" id="btn-submit" style="width: 100%; text-align: center; margin-bottom: 16px;">
-        Login
+        Sign in
       </button>
 
       <div style="text-align: center; font-size: 14px; color: var(--text-secondary);">
-        <span id="toggle-text">Belum punya akun?</span>
+        <span id="toggle-text">Don't have an account?</span>
         <button type="button" id="btn-toggle-mode" style="background: none; border: none; color: var(--accent); cursor: pointer; padding: 0 4px; font-size: 14px;">
-          Daftar akun baru
+          Create one
         </button>
       </div>
     </form>
@@ -54,17 +54,17 @@ import Layout from '../layouts/Layout.astro';
     isRegister = !isRegister;
     hideMsg();
     if (isRegister) {
-      title.textContent = 'Daftar Akun';
-      subtitle.textContent = 'Buat akun pembaca untuk mulai berkomentar.';
-      submitBtn.textContent = 'Daftar Sekarang';
-      toggleText.textContent = 'Sudah punya akun?';
-      toggleBtn.textContent = 'Login di sini';
+      title.textContent = 'Create Account';
+      subtitle.textContent = 'Register an account to comment on articles.';
+      submitBtn.textContent = 'Sign up';
+      toggleText.textContent = 'Already have an account?';
+      toggleBtn.textContent = 'Sign in here';
     } else {
-      title.textContent = 'Login';
-      subtitle.textContent = 'Masuk untuk dapat memberikan komentar atau mengelola tulisan.';
-      submitBtn.textContent = 'Login';
-      toggleText.textContent = 'Belum punya akun?';
-      toggleBtn.textContent = 'Daftar akun baru';
+      title.textContent = 'Sign in';
+      subtitle.textContent = 'Sign in to join the conversation and leave comments.';
+      submitBtn.textContent = 'Sign in';
+      toggleText.textContent = "Don't have an account?";
+      toggleBtn.textContent = 'Create one';
     }
   });
 
@@ -94,7 +94,7 @@ import Layout from '../layouts/Layout.astro';
     const password = (document.getElementById('password') as HTMLInputElement).value;
 
     submitBtn.disabled = true;
-    submitBtn.textContent = isRegister ? 'Mendaftar...' : 'Memproses...';
+    submitBtn.textContent = isRegister ? 'Signing up...' : 'Signing in...';
 
     if (isRegister) {
       const { data, error } = await supabase.auth.signUp({
@@ -103,12 +103,12 @@ import Layout from '../layouts/Layout.astro';
       });
 
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Daftar Sekarang';
+      submitBtn.textContent = 'Sign up';
 
       if (error) {
         showMsg(error.message, true);
       } else {
-        showMsg('Pendaftaran berhasil! Cek email untuk verifikasi (jika diaktifkan di Supabase) atau silakan langsung login.', false);
+        showMsg('Registration successful! Please check your email for a confirmation link (if enabled) or sign in directly.', false);
       }
     } else {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -117,18 +117,16 @@ import Layout from '../layouts/Layout.astro';
       });
 
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Login';
+      submitBtn.textContent = 'Sign in';
 
       if (error) {
         showMsg(error.message, true);
       } else {
-        // Berhasil login, kembali ke halaman sebelumnya atau beranda
         window.location.href = '/';
       }
     }
   });
 
-  // Jika sudah login, redirect ke beranda
   supabase.auth.getSession().then(({ data: { session } }) => {
     if (session) {
       window.location.href = '/';

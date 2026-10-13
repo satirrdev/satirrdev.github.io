@@ -4,22 +4,22 @@ import Layout from '../layouts/Layout.astro';
 
 <Layout title="satirr ai">
   <div class="wrap">
-    <h1>Tulisan</h1>
+    <h1>Writing</h1>
     <p class="intro" style="color: var(--text-secondary); margin-bottom: 32px;">
-      Catatan pendek soal kerja dan hal yang lagi saya pelajari.
+      Short notes on daily engineering and concepts I am currently exploring.
     </p>
 
-    <!-- State Loading -->
+    <!-- Loading State -->
     <div id="loading" style="color: var(--text-secondary); font-size: 15px;">
-      Memuat daftar tulisan...
+      Loading posts...
     </div>
 
-    <!-- Error State -->
+    <!-- Empty/Error State -->
     <div id="error-box" style="display: none; color: var(--text-secondary); font-size: 15px;">
-      Belum ada tulisan atau database belum terhubung.
+      No posts available yet.
     </div>
 
-    <!-- Daftar Post -->
+    <!-- Posts List -->
     <ul class="post-list" id="post-list" style="display: none;"></ul>
   </div>
 </Layout>
