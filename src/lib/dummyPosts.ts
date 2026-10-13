@@ -1,4 +1,5 @@
 export interface PostItem {
+  id?: string;
   slug: string;
   title: string;
   summary: string;
@@ -56,3 +57,36 @@ Drop your thoughts in the comments below.`,
     created_at: new Date(Date.now() - 86400000).toISOString()
   }
 ];
+
+const LOCAL_STORAGE_KEY = 'satirr_local_posts';
+
+export function getLocalPosts(): PostItem[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveLocalPost(post: PostItem) {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getLocalPosts().filter(p => p.slug !== post.slug);
+    existing.unshift(post);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existing));
+  } catch (e) {
+    console.error('Failed to save post locally', e);
+  }
+}
+
+export function deleteLocalPost(slug: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const filtered = getLocalPosts().filter(p => p.slug !== slug);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
+  } catch (e) {
+    console.error('Failed to delete post locally', e);
+  }
+}

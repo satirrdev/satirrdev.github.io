@@ -26,7 +26,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase } from '../lib/supabase';
-  import { DUMMY_POSTS } from '../lib/dummyPosts';
+  import { DUMMY_POSTS, getLocalPosts } from '../lib/dummyPosts';
 
   async function loadPosts() {
     const loading = document.getElementById('loading');
@@ -48,10 +48,23 @@ import Layout from '../layouts/Layout.astro';
       // Supabase not configured yet or network error
     }
 
-    // Fallback to local sample posts so the site is never blank
-    if (!posts || posts.length === 0) {
+    // Merge with any posts created locally or fallback to initial starter posts
+    const localPosts = getLocalPosts();
+    const existingSlugs = new Set(posts.map(p => p.slug));
+
+    for (const lp of localPosts) {
+      if (!existingSlugs.has(lp.slug)) {
+        posts.unshift(lp);
+        existingSlugs.add(lp.slug);
+      }
+    }
+
+    if (posts.length === 0) {
       posts = DUMMY_POSTS;
     }
+
+    // Sort by newest
+    posts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     if (loading) loading.style.display = 'none';
 

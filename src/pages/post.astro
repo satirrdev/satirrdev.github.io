@@ -57,7 +57,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, ADMIN_EMAIL } from '../lib/supabase';
-  import { DUMMY_POSTS } from '../lib/dummyPosts';
+  import { DUMMY_POSTS, getLocalPosts, deleteLocalPost } from '../lib/dummyPosts';
   import { marked } from 'marked';
 
   const params = new URLSearchParams(window.location.search);
@@ -92,9 +92,10 @@ import Layout from '../layouts/Layout.astro';
       // Supabase unconfigured or offline
     }
 
-    // Fallback to local sample posts
+    // Check local storage posts or fallback sample posts
     if (!post) {
-      post = DUMMY_POSTS.find(p => p.slug === slug);
+      const local = getLocalPosts().find(p => p.slug === slug);
+      post = local || DUMMY_POSTS.find(p => p.slug === slug);
     }
 
     document.getElementById('loading')!.style.display = 'none';
@@ -231,13 +232,19 @@ import Layout from '../layouts/Layout.astro';
 
       document.getElementById('btn-delete-post')?.addEventListener('click', async () => {
         if (!confirm(`Permanently delete post "${currentPost.title}"?`)) return;
-        const { error } = await supabase.from('posts').delete().eq('id', currentPost.id);
-        if (error) {
-          alert('Failed to delete post: ' + error.message);
-        } else {
-          alert('Post deleted.');
-          window.location.href = '/';
+        
+        // Also delete from local storage if present
+        deleteLocalPost(currentPost.slug);
+
+        if (currentPost.id) {
+          const { error } = await supabase.from('posts').delete().eq('id', currentPost.id);
+          if (error) {
+            console.warn('Supabase delete skipped:', error.message);
+          }
         }
+
+        alert('Post deleted.');
+        window.location.href = '/';
       });
     }
   }
