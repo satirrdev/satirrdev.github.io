@@ -1,0 +1,78 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="satirr ai">
+  <div class="wrap">
+    <h1>Tulisan</h1>
+    <p class="intro" style="color: var(--text-secondary); margin-bottom: 32px;">
+      Catatan pendek soal kerja dan hal yang lagi saya pelajari.
+    </p>
+
+    <!-- State Loading -->
+    <div id="loading" style="color: var(--text-secondary); font-size: 15px;">
+      Memuat daftar tulisan...
+    </div>
+
+    <!-- Error State -->
+    <div id="error-box" style="display: none; color: var(--text-secondary); font-size: 15px;">
+      Belum ada tulisan atau database belum terhubung.
+    </div>
+
+    <!-- Daftar Post -->
+    <ul class="post-list" id="post-list" style="display: none;"></ul>
+  </div>
+</Layout>
+
+<script>
+  import { supabase } from '../lib/supabase';
+
+  async function loadPosts() {
+    const loading = document.getElementById('loading');
+    const errorBox = document.getElementById('error-box');
+    const postList = document.getElementById('post-list');
+
+    try {
+      const { data: posts, error } = await supabase
+        .from('posts')
+        .select('slug, title, summary, created_at')
+        .order('created_at', { ascending: false });
+
+      if (loading) loading.style.display = 'none';
+
+      if (error || !posts || posts.length === 0) {
+        if (errorBox) errorBox.style.display = 'block';
+        return;
+      }
+
+      if (postList) {
+        postList.style.display = 'block';
+        postList.innerHTML = posts.map(post => {
+          const dateStr = new Date(post.created_at).toISOString().split('T')[0];
+          return `
+            <li>
+              <a class="title" href="/post?slug=${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a>
+              <p class="meta">${dateStr}</p>
+              <p class="summary">${escapeHtml(post.summary)}</p>
+            </li>
+          `;
+        }).join('');
+      }
+    } catch (err) {
+      if (loading) loading.style.display = 'none';
+      if (errorBox) errorBox.style.display = 'block';
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  loadPosts();
+</script>

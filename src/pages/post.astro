@@ -1,0 +1,249 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Post — satirr ai">
+  <div class="wrap">
+    <div id="loading" style="color: var(--text-secondary); font-size: 15px;">
+      Memuat tulisan...
+    </div>
+
+    <div id="not-found" style="display: none; color: var(--text-secondary);">
+      <h1>Tulisan tidak ditemukan</h1>
+      <p>Artikel mungkin sudah dihapus atau slug salah. Kembali ke <a href="/">daftar post</a>.</p>
+    </div>
+
+    <article id="article-container" style="display: none;">
+      <h1 id="post-title" style="margin-bottom: 8px;"></h1>
+      <p class="meta" id="post-date" style="margin-bottom: 32px;"></p>
+      
+      <div class="markdown-body" id="post-content"></div>
+
+      <!-- Action admin (Hapus/Edit post) -->
+      <div id="admin-actions" style="display: none; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border);">
+        <button id="btn-delete-post" class="btn-secondary" style="color: var(--danger); font-size: 13px;">Hapus Post Ini</button>
+      </div>
+
+      <!-- Bagian Komentar -->
+      <section style="margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--border);">
+        <h2 style="font-size: 1.3rem; margin-top: 0; margin-bottom: 24px;">Komentar</h2>
+
+        <!-- Form Komentar -->
+        <div id="comment-form-container" style="margin-bottom: 32px;">
+          <form id="comment-form">
+            <textarea 
+              id="comment-input" 
+              placeholder="Tulis komentar kamu di sini..." 
+              rows="3" 
+              required
+              style="margin-bottom: 12px;"
+            ></textarea>
+            <button type="submit" class="btn-primary" id="btn-submit-comment">Kirim Komentar</button>
+          </form>
+        </div>
+
+        <div id="login-to-comment" style="display: none; margin-bottom: 32px; font-size: 15px; color: var(--text-secondary);">
+          <a href="/login">Login</a> untuk ikut berdiskusi dan memberikan komentar.
+        </div>
+
+        <!-- Daftar Komentar -->
+        <div id="comments-loading" style="color: var(--text-secondary); font-size: 14px;">Memuat komentar...</div>
+        <div id="comments-empty" style="display: none; color: var(--text-secondary); font-size: 14px;">Belum ada komentar. Jadilah yang pertama berkomentar!</div>
+        <ul id="comments-list" style="list-style: none; padding: 0; margin: 0;"></ul>
+      </section>
+    </article>
+  </div>
+</Layout>
+
+<script>
+  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
+  import { marked } from 'marked';
+
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get('slug');
+
+  let currentPost: any = null;
+  let currentUser: any = null;
+
+  async function init() {
+    if (!slug) {
+      showNotFound();
+      return;
+    }
+
+    // Ambil auth session
+    const { data: { session } } = await supabase.auth.getSession();
+    currentUser = session?.user || null;
+    setupCommentAuthUI();
+
+    // Ambil artikel
+    try {
+      const { data: post, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('slug', slug)
+        .single();
+
+      document.getElementById('loading')!.style.display = 'none';
+
+      if (error || !post) {
+        showNotFound();
+        return;
+      }
+
+      currentPost = post;
+      renderPost(post);
+      loadComments();
+      setupAdminActions();
+    } catch (e) {
+      document.getElementById('loading')!.style.display = 'none';
+      showNotFound();
+    }
+  }
+
+  function showNotFound() {
+    document.getElementById('loading')!.style.display = 'none';
+    document.getElementById('not-found')!.style.display = 'block';
+  }
+
+  function renderPost(post: any) {
+    document.title = `${post.title} — satirr ai`;
+    document.getElementById('article-container')!.style.display = 'block';
+    document.getElementById('post-title')!.textContent = post.title;
+    
+    const d = new Date(post.created_at).toISOString().split('T')[0];
+    document.getElementById('post-date')!.textContent = d;
+
+    const htmlContent = marked.parse(post.content);
+    document.getElementById('post-content')!.innerHTML = typeof htmlContent === 'string' ? htmlContent : '';
+  }
+
+  function setupCommentAuthUI() {
+    const formBox = document.getElementById('comment-form-container')!;
+    const loginBox = document.getElementById('login-to-comment')!;
+
+    if (currentUser) {
+      formBox.style.display = 'block';
+      loginBox.style.display = 'none';
+    } else {
+      formBox.style.display = 'none';
+      loginBox.style.display = 'block';
+    }
+  }
+
+  async function loadComments() {
+    const loading = document.getElementById('comments-loading')!;
+    const empty = document.getElementById('comments-empty')!;
+    const list = document.getElementById('comments-list')!;
+
+    const { data: comments, error } = await supabase
+      .from('comments')
+      .select('*')
+      .eq('post_slug', slug)
+      .order('created_at', { ascending: true });
+
+    loading.style.display = 'none';
+
+    if (error || !comments || comments.length === 0) {
+      empty.style.display = 'block';
+      list.innerHTML = '';
+      return;
+    }
+
+    empty.style.display = 'none';
+    list.innerHTML = comments.map(c => {
+      const isOwner = currentUser && (currentUser.id === c.user_id || currentUser.email === ADMIN_EMAIL);
+      const dateStr = new Date(c.created_at).toLocaleString('id-ID', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+
+      return `
+        <li style="padding: 16px 0; border-bottom: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+            <span style="font-weight: 600; font-size: 14px;">${escapeHtml(c.user_email.split('@')[0])}</span>
+            <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center;">
+              <span>${dateStr}</span>
+              ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Hapus</button>` : ''}
+            </div>
+          </div>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(c.content)}</p>
+        </li>
+      `;
+    }).join('');
+
+    // Listener tombol hapus komentar
+    document.querySelectorAll('.btn-del-comment').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = (e.target as HTMLElement).getAttribute('data-id');
+        if (!confirm('Yakin ingin menghapus komentar ini?')) return;
+        await supabase.from('comments').delete().eq('id', id);
+        loadComments();
+      });
+    });
+  }
+
+  // Handle submit komentar
+  const commentForm = document.getElementById('comment-form');
+  if (commentForm) {
+    commentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!currentUser) return;
+
+      const input = document.getElementById('comment-input') as HTMLTextAreaElement;
+      const content = input.value.trim();
+      if (!content) return;
+
+      const submitBtn = document.getElementById('btn-submit-comment') as HTMLButtonElement;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Mengirim...';
+
+      const { error } = await supabase.from('comments').insert({
+        post_slug: slug,
+        user_id: currentUser.id,
+        user_email: currentUser.email,
+        content: content
+      });
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Kirim Komentar';
+
+      if (error) {
+        alert('Gagal mengirim komentar: ' + error.message);
+      } else {
+        input.value = '';
+        loadComments();
+      }
+    });
+  }
+
+  function setupAdminActions() {
+    if (currentUser && currentUser.email === ADMIN_EMAIL) {
+      const actions = document.getElementById('admin-actions')!;
+      actions.style.display = 'block';
+
+      document.getElementById('btn-delete-post')?.addEventListener('click', async () => {
+        if (!confirm(`Hapus tulisan "${currentPost.title}" secara permanen?`)) return;
+        const { error } = await supabase.from('posts').delete().eq('id', currentPost.id);
+        if (error) {
+          alert('Gagal menghapus: ' + error.message);
+        } else {
+          alert('Tulisan berhasil dihapus.');
+          window.location.href = '/';
+        }
+      });
+    }
+  }
+
+  function escapeHtml(str: string) {
+    if (!str) return '';
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  init();
+</script>

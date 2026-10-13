@@ -1,0 +1,60 @@
+---
+---
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">satirr ai</a>
+    <nav class="nav">
+      <a href="/">Posts</a>
+      <a href="/about">About</a>
+      <a href="/write" id="nav-write" style="display: none;">Tulis</a>
+      
+      <!-- Container status auth diisi via client-side script -->
+      <div id="auth-status" class="user-badge">
+        <a href="/login" id="nav-login">Login</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<script>
+  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
+
+  async function updateAuthUI() {
+    const { data: { session } } = await supabase.auth.getSession();
+    const authStatus = document.getElementById('auth-status');
+    const navWrite = document.getElementById('nav-write');
+
+    if (!authStatus) return;
+
+    if (session && session.user) {
+      const email = session.user.email || 'User';
+      const isAdmin = email === ADMIN_EMAIL;
+
+      if (navWrite) {
+        navWrite.style.display = isAdmin ? 'inline-block' : 'none';
+      }
+
+      authStatus.innerHTML = `
+        <span title="${email}">${isAdmin ? 'Admin' : email.split('@')[0]}</span>
+        <button id="btn-logout" type="button">Logout</button>
+      `;
+
+      const btnLogout = document.getElementById('btn-logout');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', async () => {
+          await supabase.auth.signOut();
+          window.location.reload();
+        });
+      }
+    } else {
+      if (navWrite) navWrite.style.display = 'none';
+      authStatus.innerHTML = `<a href="/login" id="nav-login">Login</a>`;
+    }
+  }
+
+  // Jalankan saat halaman siap & dengarkan perubahan sesi
+  updateAuthUI();
+  supabase.auth.onAuthStateChange(() => {
+    updateAuthUI();
+  });
+</script>

@@ -1,0 +1,17 @@
+{
+  "name": "satirr-blog",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "astro": "^5.4.2",
+    "marked": "^15.0.7"
+  }
+}

@@ -1,0 +1,137 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Login — satirr ai">
+  <div class="wrap" style="max-width: 420px; margin: 0 auto;">
+    <h1 id="auth-title" style="margin-bottom: 8px;">Login</h1>
+    <p class="intro" id="auth-subtitle" style="color: var(--text-secondary); margin-bottom: 28px;">
+      Masuk untuk dapat memberikan komentar atau mengelola tulisan.
+    </p>
+
+    <!-- Notifikasi Error/Info -->
+    <div id="auth-msg" style="display: none; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin-bottom: 20px;"></div>
+
+    <form id="auth-form">
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Email</label>
+        <input type="email" id="email" placeholder="nama@email.com" required />
+      </div>
+
+      <div style="margin-bottom: 24px;">
+        <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Password</label>
+        <input type="password" id="password" placeholder="Minimal 6 karakter" required minlength="6" />
+      </div>
+
+      <button type="submit" class="btn-primary" id="btn-submit" style="width: 100%; text-align: center; margin-bottom: 16px;">
+        Login
+      </button>
+
+      <div style="text-align: center; font-size: 14px; color: var(--text-secondary);">
+        <span id="toggle-text">Belum punya akun?</span>
+        <button type="button" id="btn-toggle-mode" style="background: none; border: none; color: var(--accent); cursor: pointer; padding: 0 4px; font-size: 14px;">
+          Daftar akun baru
+        </button>
+      </div>
+    </form>
+  </div>
+</Layout>
+
+<script>
+  import { supabase } from '../lib/supabase';
+
+  let isRegister = false;
+
+  const title = document.getElementById('auth-title')!;
+  const subtitle = document.getElementById('auth-subtitle')!;
+  const submitBtn = document.getElementById('btn-submit') as HTMLButtonElement;
+  const toggleBtn = document.getElementById('btn-toggle-mode') as HTMLButtonElement;
+  const toggleText = document.getElementById('toggle-text')!;
+  const msgBox = document.getElementById('auth-msg')!;
+  const form = document.getElementById('auth-form') as HTMLFormElement;
+
+  toggleBtn.addEventListener('click', () => {
+    isRegister = !isRegister;
+    hideMsg();
+    if (isRegister) {
+      title.textContent = 'Daftar Akun';
+      subtitle.textContent = 'Buat akun pembaca untuk mulai berkomentar.';
+      submitBtn.textContent = 'Daftar Sekarang';
+      toggleText.textContent = 'Sudah punya akun?';
+      toggleBtn.textContent = 'Login di sini';
+    } else {
+      title.textContent = 'Login';
+      subtitle.textContent = 'Masuk untuk dapat memberikan komentar atau mengelola tulisan.';
+      submitBtn.textContent = 'Login';
+      toggleText.textContent = 'Belum punya akun?';
+      toggleBtn.textContent = 'Daftar akun baru';
+    }
+  });
+
+  function showMsg(text: string, isError = true) {
+    msgBox.style.display = 'block';
+    msgBox.textContent = text;
+    if (isError) {
+      msgBox.style.background = 'rgba(235, 87, 87, 0.1)';
+      msgBox.style.color = 'var(--danger)';
+      msgBox.style.border = '1px solid var(--danger)';
+    } else {
+      msgBox.style.background = 'var(--surface)';
+      msgBox.style.color = 'var(--text)';
+      msgBox.style.border = '1px solid var(--border)';
+    }
+  }
+
+  function hideMsg() {
+    msgBox.style.display = 'none';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideMsg();
+
+    const email = (document.getElementById('email') as HTMLInputElement).value.trim();
+    const password = (document.getElementById('password') as HTMLInputElement).value;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = isRegister ? 'Mendaftar...' : 'Memproses...';
+
+    if (isRegister) {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password
+      });
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Daftar Sekarang';
+
+      if (error) {
+        showMsg(error.message, true);
+      } else {
+        showMsg('Pendaftaran berhasil! Cek email untuk verifikasi (jika diaktifkan di Supabase) atau silakan langsung login.', false);
+      }
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Login';
+
+      if (error) {
+        showMsg(error.message, true);
+      } else {
+        // Berhasil login, kembali ke halaman sebelumnya atau beranda
+        window.location.href = '/';
+      }
+    }
+  });
+
+  // Jika sudah login, redirect ke beranda
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      window.location.href = '/';
+    }
+  });
+</script>
