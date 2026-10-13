@@ -57,6 +57,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, ADMIN_EMAIL } from '../lib/supabase';
+  import { DUMMY_POSTS } from '../lib/dummyPosts';
   import { marked } from 'marked';
 
   const params = new URLSearchParams(window.location.search);
@@ -75,28 +76,38 @@ import Layout from '../layouts/Layout.astro';
     currentUser = session?.user || null;
     setupCommentAuthUI();
 
+    let post: any = null;
+
     try {
-      const { data: post, error } = await supabase
+      const { data, error } = await supabase
         .from('posts')
         .select('*')
         .eq('slug', slug)
         .single();
 
-      document.getElementById('loading')!.style.display = 'none';
-
-      if (error || !post) {
-        showNotFound();
-        return;
+      if (!error && data) {
+        post = data;
       }
-
-      currentPost = post;
-      renderPost(post);
-      loadComments();
-      setupAdminActions();
     } catch (e) {
-      document.getElementById('loading')!.style.display = 'none';
-      showNotFound();
+      // Supabase unconfigured or offline
     }
+
+    // Fallback to local sample posts
+    if (!post) {
+      post = DUMMY_POSTS.find(p => p.slug === slug);
+    }
+
+    document.getElementById('loading')!.style.display = 'none';
+
+    if (!post) {
+      showNotFound();
+      return;
+    }
+
+    currentPost = post;
+    renderPost(post);
+    loadComments();
+    setupAdminActions();
   }
 
   function showNotFound() {

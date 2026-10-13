@@ -26,42 +26,50 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase } from '../lib/supabase';
+  import { DUMMY_POSTS } from '../lib/dummyPosts';
 
   async function loadPosts() {
     const loading = document.getElementById('loading');
     const errorBox = document.getElementById('error-box');
     const postList = document.getElementById('post-list');
 
+    let posts: any[] = [];
+
     try {
-      const { data: posts, error } = await supabase
+      const { data, error } = await supabase
         .from('posts')
         .select('slug, title, summary, created_at')
         .order('created_at', { ascending: false });
 
-      if (loading) loading.style.display = 'none';
-
-      if (error || !posts || posts.length === 0) {
-        if (errorBox) errorBox.style.display = 'block';
-        return;
-      }
-
-      if (postList) {
-        postList.style.display = 'block';
-        postList.innerHTML = posts.map(post => {
-          const dateStr = new Date(post.created_at).toISOString().split('T')[0];
-          const postUrl = `/post?slug=${encodeURIComponent(post.slug)}`;
-          return `
-            <li onclick="window.location.href='${postUrl}'">
-              <a class="title" href="${postUrl}">${escapeHtml(post.title)}</a>
-              <p class="meta">${dateStr}</p>
-              <p class="summary">${escapeHtml(post.summary)}</p>
-            </li>
-          `;
-        }).join('');
+      if (!error && data && data.length > 0) {
+        posts = data;
       }
     } catch (err) {
-      if (loading) loading.style.display = 'none';
-      if (errorBox) errorBox.style.display = 'block';
+      // Supabase not configured yet or network error
+    }
+
+    // Fallback to local sample posts so the site is never blank
+    if (!posts || posts.length === 0) {
+      posts = DUMMY_POSTS;
+    }
+
+    if (loading) loading.style.display = 'none';
+
+    if (postList && posts.length > 0) {
+      postList.style.display = 'block';
+      postList.innerHTML = posts.map(post => {
+        const dateStr = new Date(post.created_at).toISOString().split('T')[0];
+        const postUrl = `/post?slug=${encodeURIComponent(post.slug)}`;
+        return `
+          <li onclick="window.location.href='${postUrl}'">
+            <a class="title" href="${postUrl}">${escapeHtml(post.title)}</a>
+            <p class="meta">${dateStr}</p>
+            <p class="summary">${escapeHtml(post.summary)}</p>
+          </li>
+        `;
+      }).join('');
+    } else if (errorBox) {
+      errorBox.style.display = 'block';
     }
   }
 
