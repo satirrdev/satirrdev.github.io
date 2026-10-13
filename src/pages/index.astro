@@ -49,9 +49,10 @@ import Layout from '../layouts/Layout.astro';
         postList.style.display = 'block';
         postList.innerHTML = posts.map(post => {
           const dateStr = new Date(post.created_at).toISOString().split('T')[0];
+          const postUrl = `/post?slug=${encodeURIComponent(post.slug)}`;
           return `
-            <li>
-              <a class="title" href="/post?slug=${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a>
+            <li onclick="window.location.href='${postUrl}'">
+              <a class="title" href="${postUrl}">${escapeHtml(post.title)}</a>
               <p class="meta">${dateStr}</p>
               <p class="summary">${escapeHtml(post.summary)}</p>
             </li>
