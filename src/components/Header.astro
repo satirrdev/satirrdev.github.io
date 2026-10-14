@@ -16,43 +16,58 @@
 </header>
 
 <script>
-  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
+  import { supabase, ADMIN_EMAIL, isSupabaseConfigured } from '../lib/supabase';
 
   async function updateAuthUI() {
-    const { data: { session } } = await supabase.auth.getSession();
     const authStatus = document.getElementById('auth-status');
     const navWrite = document.getElementById('nav-write');
 
     if (!authStatus) return;
 
-    if (session && session.user) {
-      const email = session.user.email || 'User';
-      const isAdmin = Boolean(ADMIN_EMAIL && email === ADMIN_EMAIL);
+    if (!isSupabaseConfigured) {
+      // In local demo mode, show Write button so author can test posting freely
+      if (navWrite) navWrite.style.display = 'inline-block';
+      authStatus.innerHTML = `<span>Demo Mode</span>`;
+      return;
+    }
 
-      if (navWrite) {
-        navWrite.style.display = isAdmin ? 'inline-block' : 'none';
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session && session.user) {
+        const email = session.user.email || 'User';
+        const isAdmin = Boolean(ADMIN_EMAIL && email === ADMIN_EMAIL);
+
+        if (navWrite) {
+          navWrite.style.display = isAdmin ? 'inline-block' : 'none';
+        }
+
+        authStatus.innerHTML = `
+          <span title="${email}">${isAdmin ? 'Admin' : email.split('@')[0]}</span>
+          <button id="btn-logout" type="button">Sign out</button>
+        `;
+
+        const btnLogout = document.getElementById('btn-logout');
+        if (btnLogout) {
+          btnLogout.addEventListener('click', async () => {
+            await supabase.auth.signOut();
+            window.location.reload();
+          });
+        }
+      } else {
+        if (navWrite) navWrite.style.display = 'none';
+        authStatus.innerHTML = `<a href="/login" id="nav-login">Sign in</a>`;
       }
-
-      authStatus.innerHTML = `
-        <span title="${email}">${isAdmin ? 'Admin' : email.split('@')[0]}</span>
-        <button id="btn-logout" type="button">Sign out</button>
-      `;
-
-      const btnLogout = document.getElementById('btn-logout');
-      if (btnLogout) {
-        btnLogout.addEventListener('click', async () => {
-          await supabase.auth.signOut();
-          window.location.reload();
-        });
-      }
-    } else {
+    } catch (e) {
       if (navWrite) navWrite.style.display = 'none';
       authStatus.innerHTML = `<a href="/login" id="nav-login">Sign in</a>`;
     }
   }
 
   updateAuthUI();
-  supabase.auth.onAuthStateChange(() => {
-    updateAuthUI();
-  });
+  if (isSupabaseConfigured) {
+    supabase.auth.onAuthStateChange(() => {
+      updateAuthUI();
+    });
+  }
 </script>

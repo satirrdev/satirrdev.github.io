@@ -54,23 +54,32 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
+  import { supabase, ADMIN_EMAIL, isSupabaseConfigured } from '../lib/supabase';
   import { saveLocalPost } from '../lib/dummyPosts';
   import { marked } from 'marked';
 
   async function checkAdmin() {
-    const { data: { session } } = await supabase.auth.getSession();
     const authCheck = document.getElementById('auth-check')!;
     const unauthorized = document.getElementById('unauthorized')!;
     const editor = document.getElementById('editor-container')!;
 
     authCheck.style.display = 'none';
 
-    if (!session || !session.user || !ADMIN_EMAIL || session.user.email !== ADMIN_EMAIL) {
-      unauthorized.style.display = 'block';
-      return;
+    // If Supabase is configured, enforce admin check
+    if (isSupabaseConfigured) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session || !session.user || !ADMIN_EMAIL || session.user.email !== ADMIN_EMAIL) {
+          unauthorized.style.display = 'block';
+          return;
+        }
+      } catch (e) {
+        unauthorized.style.display = 'block';
+        return;
+      }
     }
 
+    // Allowed (either admin verified or preview/local mode)
     editor.style.display = 'block';
     setupEditor();
   }
@@ -134,28 +143,27 @@ import Layout from '../layouts/Layout.astro';
       publishBtn.disabled = true;
       publishBtn.textContent = 'Publishing...';
 
-      let supabaseSuccess = false;
-      try {
-        const { error } = await supabase.from('posts').insert({
-          title,
-          slug,
-          summary,
-          content
-        });
+      if (isSupabaseConfigured) {
+        try {
+          const { error } = await supabase.from('posts').insert({
+            title,
+            slug,
+            summary,
+            content
+          });
 
-        if (!error) {
-          supabaseSuccess = true;
-        } else if (error.code === '23505') {
-          publishBtn.disabled = false;
-          publishBtn.textContent = 'Publish post';
-          alert('This URL slug is already taken. Please choose another.');
-          return;
+          if (error && error.code === '23505') {
+            publishBtn.disabled = false;
+            publishBtn.textContent = 'Publish post';
+            alert('This URL slug is already taken. Please choose another.');
+            return;
+          }
+        } catch (err) {
+          // Supabase network issue
         }
-      } catch (err) {
-        // Supabase network or key issue
       }
 
-      // Always save to local storage as reliable backup
+      // Save to local storage for instant availability
       saveLocalPost({
         slug,
         title,

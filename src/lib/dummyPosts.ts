@@ -7,6 +7,15 @@ export interface PostItem {
   created_at: string;
 }
 
+export interface CommentItem {
+  id: string;
+  post_slug: string;
+  user_id: string;
+  user_email: string;
+  content: string;
+  created_at: string;
+}
+
 export const DUMMY_POSTS: PostItem[] = [
   {
     slug: 'hello-world',
@@ -59,6 +68,7 @@ Drop your thoughts in the comments below.`,
 ];
 
 const LOCAL_STORAGE_KEY = 'satirr_local_posts';
+const LOCAL_COMMENTS_KEY = 'satirr_local_comments';
 
 export function getLocalPosts(): PostItem[] {
   if (typeof window === 'undefined') return [];
@@ -88,5 +98,40 @@ export function deleteLocalPost(slug: string) {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
   } catch (e) {
     console.error('Failed to delete post locally', e);
+  }
+}
+
+export function getLocalComments(postSlug: string): CommentItem[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_COMMENTS_KEY);
+    const all: CommentItem[] = raw ? JSON.parse(raw) : [];
+    return all.filter(c => c.post_slug === postSlug);
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveLocalComment(comment: CommentItem) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(LOCAL_COMMENTS_KEY);
+    const all: CommentItem[] = raw ? JSON.parse(raw) : [];
+    all.push(comment);
+    localStorage.setItem(LOCAL_COMMENTS_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error('Failed to save comment locally', e);
+  }
+}
+
+export function deleteLocalComment(id: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(LOCAL_COMMENTS_KEY);
+    const all: CommentItem[] = raw ? JSON.parse(raw) : [];
+    const filtered = all.filter(c => c.id !== id);
+    localStorage.setItem(LOCAL_COMMENTS_KEY, JSON.stringify(filtered));
+  } catch (e) {
+    console.error('Failed to delete comment locally', e);
   }
 }

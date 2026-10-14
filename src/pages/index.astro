@@ -25,7 +25,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { supabase } from '../lib/supabase';
+  import { supabase, isSupabaseConfigured } from '../lib/supabase';
   import { DUMMY_POSTS, getLocalPosts } from '../lib/dummyPosts';
 
   async function loadPosts() {
@@ -33,37 +33,39 @@ import Layout from '../layouts/Layout.astro';
     const errorBox = document.getElementById('error-box');
     const postList = document.getElementById('post-list');
 
-    let posts: any[] = [];
-
-    try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('slug, title, summary, created_at')
-        .order('created_at', { ascending: false });
-
-      if (!error && data && data.length > 0) {
-        posts = data;
-      }
-    } catch (err) {
-      // Supabase not configured yet or network error
-    }
-
-    // Merge with any posts created locally or fallback to initial starter posts
-    const localPosts = getLocalPosts();
+    // 1. Instantly get local posts + dummy posts
+    let posts = [...getLocalPosts()];
     const existingSlugs = new Set(posts.map(p => p.slug));
 
-    for (const lp of localPosts) {
-      if (!existingSlugs.has(lp.slug)) {
-        posts.unshift(lp);
-        existingSlugs.add(lp.slug);
+    for (const dp of DUMMY_POSTS) {
+      if (!existingSlugs.has(dp.slug)) {
+        posts.push(dp);
+        existingSlugs.add(dp.slug);
       }
     }
 
-    if (posts.length === 0) {
-      posts = DUMMY_POSTS;
+    // 2. If real Supabase credentials exist, fetch from remote database
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('slug, title, summary, created_at')
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          for (const sp of data) {
+            if (!existingSlugs.has(sp.slug)) {
+              posts.unshift(sp);
+              existingSlugs.add(sp.slug);
+            }
+          }
+        }
+      } catch (err) {
+        // Fallback to local
+      }
     }
 
-    // Sort by newest
+    // Sort newest first
     posts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     if (loading) loading.style.display = 'none';
