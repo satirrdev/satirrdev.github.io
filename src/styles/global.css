@@ -261,36 +261,84 @@ input:focus, textarea:focus {
   line-height: 1.6;
 }
 
-/* Markdown Rendering */
-.post-claude-font {
-  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 16.5px;
+/* Article Typography - Times New Roman */
+.post-article-font {
+  font-family: "Times New Roman", Times, "Liberation Serif", serif;
+  font-size: 18px;
   line-height: 1.8;
-  letter-spacing: -0.003em;
+  letter-spacing: 0.005em;
+}
+
+.post-article-font h1,
+.post-article-font h2,
+.post-article-font h3,
+.post-article-font h4 {
+  font-family: "Times New Roman", Times, "Liberation Serif", serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.post-article-font h1 {
+  font-size: 2.25rem;
+  line-height: 1.25;
+}
+
+.post-article-font h2 {
+  font-size: 1.65rem;
+  margin-top: 1.8em;
+}
+
+.post-article-font h3 {
+  font-size: 1.35rem;
+  margin-top: 1.5em;
+}
+
+.post-article-font p {
+  margin: 0 0 1.35em;
+  color: var(--text);
+}
+
+.post-article-font blockquote {
+  margin: 1.5em 0;
+  padding: 10px 18px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+  font-family: inherit;
+}
+
+/* Backwards compatibility */
+.post-claude-font {
+  font-family: "Times New Roman", Times, "Liberation Serif", serif;
+  font-size: 18px;
+  line-height: 1.8;
+  letter-spacing: 0.005em;
 }
 
 .post-claude-font h1,
 .post-claude-font h2,
 .post-claude-font h3,
 .post-claude-font h4 {
-  font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-family: "Times New Roman", Times, "Liberation Serif", serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 
 .post-claude-font h1 {
-  font-size: 2.15rem;
+  font-size: 2.25rem;
   line-height: 1.25;
 }
 
 .post-claude-font h2 {
-  font-size: 1.55rem;
+  font-size: 1.65rem;
   margin-top: 1.8em;
 }
 
 .post-claude-font h3 {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   margin-top: 1.5em;
 }
 
