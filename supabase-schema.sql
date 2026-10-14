@@ -109,6 +109,6 @@ insert into public.posts (slug, title, summary, content)
 values (
   'hello-world',
   'Hello World',
-  'Welcome to the new satirr ai blog built with Astro and Supabase.',
-  '# Hello World\n\nWelcome to the updated **satirr ai** blog.\n\nThis site is built with **Astro** and powered by **Supabase** for database storage and user authentication.\n\n> Authors can publish and manage posts directly through the browser without needing manual git pushes.\n\nFeel free to join the conversation in the comments section below.'
+  'Welcome to the new aBlog by Satirr built with Astro and Supabase.',
+  '# Hello World\n\nWelcome to the updated **aBlog by Satirr**.\n\nThis site is built with **Astro** and powered by **Supabase** for database storage and user authentication.\n\n> Authors can publish and manage posts directly through the browser without needing manual git pushes.\n\nFeel free to join the conversation in the comments section below.'
 ) on conflict (slug) do nothing;

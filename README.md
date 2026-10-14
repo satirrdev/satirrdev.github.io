@@ -1,4 +1,4 @@
-# satirr ai
+# aBlog by Satirr
 
 A minimalist, high-performance personal blog built with **Astro** and powered by **Supabase**. Designed to be hosted statically on **GitHub Pages** while retaining full dynamic capabilities for content publishing and community discussions.
 

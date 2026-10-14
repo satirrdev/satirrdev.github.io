@@ -20,10 +20,10 @@ export const DUMMY_POSTS: PostItem[] = [
   {
     slug: 'hello-world',
     title: 'Hello World',
-    summary: 'Welcome to satirr ai blog. A quick glance at the new design and dynamic features.',
+    summary: 'Welcome to aBlog by Satirr. A quick glance at the new design and dynamic features.',
     content: `# Hello World
 
-Welcome to the new **satirr ai** blog.
+Welcome to the new **aBlog by Satirr**.
 
 This site is built with **Astro** and designed with an editorial aesthetic inspired by Claude's clean typography.
 

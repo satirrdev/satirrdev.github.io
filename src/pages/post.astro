@@ -2,7 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 ---
 
-<Layout title="Post — satirr ai">
+<Layout title="Post | aBlog by Satirr">
   <div class="wrap">
     <div id="loading" style="color: var(--text-secondary); font-size: 15px;">
       Loading post...
@@ -127,15 +127,30 @@ import Layout from '../layouts/Layout.astro';
     document.getElementById('not-found')!.style.display = 'block';
   }
 
+  function stripDuplicateHeading(content: string, postTitle: string) {
+    if (!content) return '';
+    const trimmed = content.trim();
+    const headingMatch = trimmed.match(/^#\s+([^\r\n]+)/);
+    if (headingMatch) {
+      const headingText = headingMatch[1].replace(/[*_`]/g, '').trim().toLowerCase();
+      const cleanTitle = (postTitle || '').replace(/[*_`]/g, '').trim().toLowerCase();
+      if (headingText === cleanTitle || !cleanTitle) {
+        return trimmed.replace(/^#\s+[^\r\n]+(?:\r?\n)*/, '').trim();
+      }
+    }
+    return content;
+  }
+
   function renderPost(post: any) {
-    document.title = `${post.title} — satirr ai`;
+    document.title = `${post.title} | aBlog by Satirr`;
     document.getElementById('article-container')!.style.display = 'block';
     document.getElementById('post-title')!.textContent = post.title;
     
     const d = new Date(post.created_at).toISOString().split('T')[0];
     document.getElementById('post-date')!.textContent = d;
 
-    const htmlContent = marked.parse(post.content || '');
+    const bodyContent = stripDuplicateHeading(post.content || '', post.title || '');
+    const htmlContent = marked.parse(bodyContent);
     document.getElementById('post-content')!.innerHTML = typeof htmlContent === 'string' ? htmlContent : '';
   }
 
