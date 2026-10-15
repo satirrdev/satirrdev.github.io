@@ -112,3 +112,27 @@ values (
   'Welcome to the new aBlog by Satirr built with Astro and Supabase.',
   '# Hello World\n\nWelcome to the updated **aBlog by Satirr**.\n\nThis site is built with **Astro** and powered by **Supabase** for database storage and user authentication.\n\n> Authors can publish and manage posts directly through the browser without needing manual git pushes.\n\nFeel free to join the conversation in the comments section below.'
 ) on conflict (slug) do nothing;
+
+-- 8. Create Profiles Table (Stores user name, bio, and external website link)
+create table if not exists public.profiles (
+  id uuid references auth.users(id) on delete cascade primary key,
+  display_name text,
+  bio text,
+  website text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Enable RLS for Profiles
+alter table public.profiles enable row level security;
+
+-- Profiles policies
+create policy "Profiles are publicly readable"
+  on public.profiles for select
+  using (true);
+
+create policy "Users can update own profile"
+  on public.profiles for all
+  to authenticated
+  using (auth.uid() = id)
+  with check (auth.uid() = id);

@@ -1,0 +1,205 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Profile | aBlog by Satirr">
+  <div class="wrap" style="max-width: 520px; margin: 0 auto;">
+    <div id="auth-check" style="color: var(--text-secondary); font-size: 15px;">
+      Loading profile...
+    </div>
+
+    <div id="unauthorized" style="display: none; color: var(--text-secondary);">
+      <h1>Access Restricted</h1>
+      <p>Please <a href="/login">sign in</a> to view and edit your profile.</p>
+    </div>
+
+    <div id="profile-container" style="display: none;">
+      <h1 style="margin-bottom: 8px;">Your Profile</h1>
+      <p class="intro" style="color: var(--text-secondary); margin-bottom: 28px;">
+        Manage how your information appears across discussions.
+      </p>
+
+      <div id="msg-box" style="display: none; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin-bottom: 20px;"></div>
+
+      <form id="profile-form">
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Email</label>
+          <input type="text" id="user-email" disabled style="opacity: 0.7; cursor: not-allowed; background: var(--surface);" />
+          <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0;">Email cannot be changed directly.</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Display Name</label>
+          <input type="text" id="display-name" placeholder="e.g. John Doe" maxlength="60" />
+          <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0;">Shown as author name on your comments.</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Bio</label>
+          <textarea id="bio" rows="3" placeholder="A short bio about yourself..." maxlength="200"></textarea>
+        </div>
+
+        <div style="margin-bottom: 28px;">
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">External Link</label>
+          <input type="url" id="website" placeholder="https://yourwebsite.com or https://github.com/username" />
+        </div>
+
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <button type="submit" class="btn-primary" id="btn-save">Save Profile</button>
+          <a href="/" style="font-size: 14px; color: var(--text-secondary);">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+  let currentUser: any = null;
+
+  const authCheck = document.getElementById('auth-check')!;
+  const unauthorized = document.getElementById('unauthorized')!;
+  const profileContainer = document.getElementById('profile-container')!;
+  const emailInput = document.getElementById('user-email') as HTMLInputElement;
+  const nameInput = document.getElementById('display-name') as HTMLInputElement;
+  const bioInput = document.getElementById('bio') as HTMLTextAreaElement;
+  const websiteInput = document.getElementById('website') as HTMLInputElement;
+  const saveBtn = document.getElementById('btn-save') as HTMLButtonElement;
+  const msgBox = document.getElementById('msg-box')!;
+  const form = document.getElementById('profile-form') as HTMLFormElement;
+
+  function showMessage(text: string, isError = false) {
+    msgBox.style.display = 'block';
+    msgBox.textContent = text;
+    if (isError) {
+      msgBox.style.background = 'rgba(235, 87, 87, 0.1)';
+      msgBox.style.color = 'var(--danger)';
+      msgBox.style.border = '1px solid var(--danger)';
+    } else {
+      msgBox.style.background = 'var(--surface)';
+      msgBox.style.color = 'var(--text)';
+      msgBox.style.border = '1px solid var(--border)';
+    }
+  }
+
+  async function loadProfile() {
+    if (!isSupabaseConfigured) {
+      // Offline / Demo profile fallback
+      const demoEmail = localStorage.getItem('satirr_demo_email') || 'user@example.com';
+      const raw = localStorage.getItem('satirr_profile_' + demoEmail);
+      const data = raw ? JSON.parse(raw) : {};
+
+      authCheck.style.display = 'none';
+      profileContainer.style.display = 'block';
+      emailInput.value = demoEmail;
+      nameInput.value = data.name || '';
+      bioInput.value = data.bio || '';
+      websiteInput.value = data.website || '';
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) {
+        authCheck.style.display = 'none';
+        unauthorized.style.display = 'block';
+        return;
+      }
+
+      currentUser = session.user;
+      authCheck.style.display = 'none';
+      profileContainer.style.display = 'block';
+
+      emailInput.value = currentUser.email || '';
+
+      // First check metadata from auth
+      const meta = currentUser.user_metadata || {};
+      nameInput.value = meta.display_name || meta.name || '';
+      bioInput.value = meta.bio || '';
+      websiteInput.value = meta.website || '';
+
+      // Also check profiles table if exists
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+
+      if (!error && data) {
+        if (data.display_name) nameInput.value = data.display_name;
+        if (data.bio) bioInput.value = data.bio;
+        if (data.website) websiteInput.value = data.website;
+      }
+    } catch (e) {
+      authCheck.style.display = 'none';
+      unauthorized.style.display = 'block';
+    }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msgBox.style.display = 'none';
+
+    const displayName = nameInput.value.trim();
+    const bio = bioInput.value.trim();
+    const website = websiteInput.value.trim();
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    if (!isSupabaseConfigured) {
+      const demoEmail = emailInput.value;
+      localStorage.setItem('satirr_profile_' + demoEmail, JSON.stringify({
+        name: displayName,
+        bio,
+        website
+      }));
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Profile';
+      showMessage('Profile updated successfully.');
+      return;
+    }
+
+    try {
+      // 1. Update user auth metadata
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          display_name: displayName,
+          bio: bio,
+          website: website
+        }
+      });
+
+      if (authError) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Profile';
+        showMessage(authError.message, true);
+        return;
+      }
+
+      // 2. Also upsert to profiles table if it exists
+      try {
+        await supabase.from('profiles').upsert({
+          id: currentUser.id,
+          display_name: displayName,
+          bio: bio,
+          website: website,
+          updated_at: new Date().toISOString()
+        });
+      } catch (tableErr) {
+        // Table might not be created yet, user metadata is already saved
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Profile';
+      showMessage('Profile updated successfully.');
+    } catch (err: any) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Profile';
+      showMessage(err.message || 'Failed to update profile.', true);
+    }
+  });
+
+  loadProfile();
+</script>
