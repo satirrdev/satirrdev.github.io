@@ -136,3 +136,41 @@ create policy "Users can update own profile"
   to authenticated
   using (auth.uid() = id)
   with check (auth.uid() = id);
+
+-- 9. Add Parent Comment ID (for replies) and Votes to Comments Table
+alter table public.comments add column if not exists parent_id uuid references public.comments(id) on delete cascade;
+
+-- 10. Create Comment Votes Table (track user upvotes/downvotes)
+create table if not exists public.comment_votes (
+  id uuid default gen_random_uuid() primary key,
+  comment_id uuid not null references public.comments(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
+  user_email text not null,
+  vote smallint not null check (vote in (-1, 1)),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(comment_id, user_email)
+);
+
+alter table public.comment_votes enable row level security;
+
+create policy "Comment votes are publicly readable"
+  on public.comment_votes for select
+  using (true);
+
+create policy "Authenticated users can vote"
+  on public.comment_votes for insert
+  to authenticated
+  with check (
+    auth.jwt() ->> 'email' = user_email
+  );
+
+create policy "Users can change their vote"
+  on public.comment_votes for update
+  to authenticated
+  using (auth.jwt() ->> 'email' = user_email)
+  with check (auth.jwt() ->> 'email' = user_email);
+
+create policy "Users can remove their vote"
+  on public.comment_votes for delete
+  to authenticated
+  using (auth.jwt() ->> 'email' = user_email);

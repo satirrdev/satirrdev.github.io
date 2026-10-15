@@ -60,7 +60,17 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, ADMIN_EMAIL, isSupabaseConfigured } from '../lib/supabase';
-  import { DUMMY_POSTS, getLocalPosts, deleteLocalPost, getDeletedSlugs, getLocalComments, saveLocalComment, deleteLocalComment } from '../lib/dummyPosts';
+  import { 
+    DUMMY_POSTS, 
+    getLocalPosts, 
+    deleteLocalPost, 
+    getDeletedSlugs, 
+    getLocalComments, 
+    saveLocalComment, 
+    deleteLocalComment,
+    getLocalVote,
+    saveLocalVote
+  } from '../lib/dummyPosts';
   import { marked } from 'marked';
 
   const params = new URLSearchParams(window.location.search);
@@ -69,6 +79,7 @@ import Layout from '../layouts/Layout.astro';
   let currentPost: any = null;
   let currentUser: any = null;
   let isSubmittingComment = false;
+  let cachedComments: any[] = [];
 
   async function init() {
     if (!slug) {
@@ -76,7 +87,6 @@ import Layout from '../layouts/Layout.astro';
       return;
     }
 
-    // Check if this post was marked as deleted
     const deletedSlugs = getDeletedSlugs();
     if (deletedSlugs.includes(slug)) {
       showNotFound();
@@ -106,7 +116,7 @@ import Layout from '../layouts/Layout.astro';
 
     setupCommentAuthUI();
 
-    // 2. Fetch post: first check local storage, then dummy fallback
+    // 2. Fetch post
     let post: any = getLocalPosts().find(p => p.slug === slug) || DUMMY_POSTS.find(p => p.slug === slug);
 
     if (isSupabaseConfigured) {
@@ -120,9 +130,7 @@ import Layout from '../layouts/Layout.astro';
         if (!error && data) {
           post = data;
         }
-      } catch (e) {
-        // Fallback to local
-      }
+      } catch (e) {}
     }
 
     document.getElementById('loading')!.style.display = 'none';
@@ -208,7 +216,6 @@ import Layout from '../layouts/Layout.astro';
         if (!error && data && data.length > 0) {
           for (const sc of data) {
             comments.push(sc);
-            // Sign by id and by content+email to prevent duplicates
             if (sc.id) seenSignatures.add(sc.id);
             seenSignatures.add(`${sc.user_email}_${sc.content.trim()}`);
           }
@@ -216,7 +223,7 @@ import Layout from '../layouts/Layout.astro';
       } catch (e) {}
     }
 
-    // 2. Add local comments only if they do not already exist in remote
+    // 2. Fetch local comments
     const localComments = getLocalComments(slug!);
     for (const lc of localComments) {
       const sig = `${lc.user_email}_${lc.content.trim()}`;
@@ -227,6 +234,15 @@ import Layout from '../layouts/Layout.astro';
       }
     }
 
+    // Calculate score & user vote status
+    const userEmail = currentUser ? currentUser.email : '';
+    for (const c of comments) {
+      const voteVal = userEmail ? getLocalVote(c.id, userEmail) : 0;
+      c.userVote = voteVal;
+      c.score = (c.score || 0) + voteVal;
+    }
+
+    cachedComments = comments;
     loading.style.display = 'none';
 
     if (!comments || comments.length === 0) {
@@ -236,7 +252,18 @@ import Layout from '../layouts/Layout.astro';
     }
 
     empty.style.display = 'none';
-    list.innerHTML = comments.map(c => {
+
+    // Separate top-level comments and replies
+    const topLevel = comments.filter(c => !c.parent_id);
+    const repliesMap: { [key: string]: any[] } = {};
+    for (const c of comments) {
+      if (c.parent_id) {
+        if (!repliesMap[c.parent_id]) repliesMap[c.parent_id] = [];
+        repliesMap[c.parent_id].push(c);
+      }
+    }
+
+    function renderCommentHTML(c: any, isReply = false): string {
       const isOwner = currentUser && (
         (c.user_id && currentUser.id === c.user_id) ||
         (c.user_email && currentUser.email === c.user_email) ||
@@ -249,20 +276,60 @@ import Layout from '../layouts/Layout.astro';
         timeStyle: 'short'
       });
 
+      const replies = repliesMap[c.id] || [];
+
       return `
-        <li style="padding: 16px 0; border-bottom: 1px solid var(--border);">
-          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+        <li style="padding: 14px 0; border-bottom: 1px solid var(--border); ${isReply ? 'margin-left: 28px; padding-left: 14px; border-left: 2px solid var(--border); border-bottom: none;' : ''}">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
             <span style="font-weight: 600; font-size: 14px;">${escapeHtml(authorName)}</span>
             <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center;">
               <span>${dateStr}</span>
               ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Delete</button>` : ''}
             </div>
           </div>
-          <p style="margin: 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(c.content)}</p>
+          
+          <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(c.content)}</p>
+
+          <!-- Vote & Reply Toolbar -->
+          <div style="display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--text-secondary);">
+            <!-- Upvote / Downvote -->
+            <div style="display: flex; align-items: center; gap: 6px; background: var(--surface); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">
+              <button class="btn-vote" data-id="${c.id}" data-type="1" style="background:none; border:none; cursor:pointer; color: ${c.userVote === 1 ? 'var(--accent)' : 'inherit'}; font-weight: bold; font-size: 13px; padding: 2px 4px;" title="Upvote">▲</button>
+              <span id="score-${c.id}" style="font-weight: 600; min-width: 12px; text-align: center;">${c.score || 0}</span>
+              <button class="btn-vote" data-id="${c.id}" data-type="-1" style="background:none; border:none; cursor:pointer; color: ${c.userVote === -1 ? 'var(--danger)' : 'inherit'}; font-weight: bold; font-size: 13px; padding: 2px 4px;" title="Downvote">▼</button>
+            </div>
+
+            <!-- Reply Button -->
+            <button class="btn-toggle-reply" data-id="${c.id}" style="background:none; border:none; cursor:pointer; color: var(--accent); font-size: 13px; padding: 0;">Reply</button>
+          </div>
+
+          <!-- Inline Reply Form Container -->
+          <div id="reply-box-${c.id}" style="display: none; margin-top: 14px; padding: 12px; background: var(--surface); border-radius: 6px; border: 1px solid var(--border);">
+            <textarea id="reply-input-${c.id}" rows="2" placeholder="Write a reply..." style="margin-bottom: 8px;"></textarea>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-primary btn-submit-reply" data-parent-id="${c.id}" style="font-size: 13px; padding: 6px 12px;">Send Reply</button>
+              <button class="btn-secondary btn-cancel-reply" data-parent-id="${c.id}" style="font-size: 13px; padding: 6px 12px;">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Nested Replies -->
+          ${replies.length > 0 ? `
+            <ul style="list-style: none; padding: 0; margin-top: 10px;">
+              ${replies.map(r => renderCommentHTML(r, true)).join('')}
+            </ul>
+          ` : ''}
         </li>
       `;
-    }).join('');
+    }
 
+    list.innerHTML = topLevel.map(c => renderCommentHTML(c)).join('');
+
+    // Attach Event Listeners
+    attachCommentInteractions();
+  }
+
+  function attachCommentInteractions() {
+    // 1. Delete Comment
     document.querySelectorAll('.btn-del-comment').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
@@ -276,6 +343,122 @@ import Layout from '../layouts/Layout.astro';
             } catch (err) {}
           }
         }
+        loadComments();
+      });
+    });
+
+    // 2. Upvote & Downvote
+    document.querySelectorAll('.btn-vote').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        if (!currentUser) {
+          alert('Please sign in to vote on comments.');
+          return;
+        }
+
+        const target = e.currentTarget as HTMLElement;
+        const commentId = target.getAttribute('data-id')!;
+        const voteType = parseInt(target.getAttribute('data-type')!, 10);
+        const currentVote = getLocalVote(commentId, currentUser.email);
+
+        // Toggle vote: if already upvoted, click again removes vote
+        const newVote = currentVote === voteType ? 0 : voteType;
+        saveLocalVote(commentId, currentUser.email, newVote);
+
+        if (isSupabaseConfigured) {
+          try {
+            if (newVote === 0) {
+              await supabase.from('comment_votes').delete().match({
+                comment_id: commentId,
+                user_email: currentUser.email
+              });
+            } else {
+              await supabase.from('comment_votes').upsert({
+                comment_id: commentId,
+                user_email: currentUser.email,
+                vote: newVote
+              });
+            }
+          } catch (err) {}
+        }
+
+        loadComments();
+      });
+    });
+
+    // 3. Toggle Reply Form
+    document.querySelectorAll('.btn-toggle-reply').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        if (!currentUser) {
+          alert('Please sign in to reply to comments.');
+          return;
+        }
+        const commentId = (e.currentTarget as HTMLElement).getAttribute('data-id')!;
+        const replyBox = document.getElementById(`reply-box-${commentId}`)!;
+        replyBox.style.display = replyBox.style.display === 'none' ? 'block' : 'none';
+        if (replyBox.style.display === 'block') {
+          const input = document.getElementById(`reply-input-${commentId}`) as HTMLTextAreaElement;
+          input?.focus();
+        }
+      });
+    });
+
+    // 4. Cancel Reply
+    document.querySelectorAll('.btn-cancel-reply').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const parentId = (e.currentTarget as HTMLElement).getAttribute('data-parent-id')!;
+        const replyBox = document.getElementById(`reply-box-${parentId}`)!;
+        replyBox.style.display = 'none';
+      });
+    });
+
+    // 5. Submit Reply
+    document.querySelectorAll('.btn-submit-reply').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        if (!currentUser) return;
+        const parentId = (e.currentTarget as HTMLElement).getAttribute('data-parent-id')!;
+        const input = document.getElementById(`reply-input-${parentId}`) as HTMLTextAreaElement;
+        const content = input.value.trim();
+        if (!content) return;
+
+        const submitBtn = e.currentTarget as HTMLButtonElement;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending...';
+
+        const authorName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+        const newReply = {
+          id: 'c_' + Date.now(),
+          post_slug: slug!,
+          parent_id: parentId,
+          user_id: currentUser.id !== 'demo-user' ? currentUser.id : null,
+          user_email: currentUser.email,
+          author_name: authorName,
+          content: content,
+          created_at: new Date().toISOString()
+        };
+
+        saveLocalComment(newReply);
+
+        if (isSupabaseConfigured) {
+          try {
+            const insertPayload: any = {
+              post_slug: slug,
+              parent_id: parentId,
+              user_email: currentUser.email,
+              content: content
+            };
+            if (currentUser.id && currentUser.id !== 'demo-user') {
+              insertPayload.user_id = currentUser.id;
+            }
+            const { data } = await supabase.from('comments').insert(insertPayload).select();
+            if (data && data[0]) {
+              saveLocalComment(data[0]);
+            }
+          } catch (err) {}
+        }
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send Reply';
+        input.value = '';
         loadComments();
       });
     });
@@ -309,6 +492,7 @@ import Layout from '../layouts/Layout.astro';
       const newComment = {
         id: tempId,
         post_slug: slug!,
+        parent_id: null,
         user_id: currentUser.id !== 'demo-user' ? currentUser.id : null,
         user_email: currentUser.email,
         author_name: authorName,
@@ -316,7 +500,6 @@ import Layout from '../layouts/Layout.astro';
         created_at: new Date().toISOString()
       };
 
-      // If Supabase is active, push to remote
       if (isSupabaseConfigured) {
         try {
           const insertPayload: any = {
@@ -330,7 +513,6 @@ import Layout from '../layouts/Layout.astro';
 
           const { data, error } = await supabase.from('comments').insert(insertPayload).select();
           if (!error && data && data[0]) {
-            // Save Supabase canonical version locally to keep offline cache in sync
             saveLocalComment(data[0]);
           } else {
             saveLocalComment(newComment);
@@ -352,12 +534,6 @@ import Layout from '../layouts/Layout.astro';
   }
 
   function setupAdminActions() {
-    const isOwner = currentUser && (
-      (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL) ||
-      !isSupabaseConfigured
-    );
-
-    // Show delete button for admin or anyone in local preview mode
     const actions = document.getElementById('admin-actions')!;
     actions.style.display = 'block';
 
@@ -369,10 +545,8 @@ import Layout from '../layouts/Layout.astro';
         deleteBtn.textContent = 'Deleting...';
         (deleteBtn as HTMLButtonElement).disabled = true;
 
-        // 1. Immediately delete locally & record slug as deleted
         deleteLocalPost(currentPost.slug);
 
-        // 2. Delete from Supabase database by slug and by id
         if (isSupabaseConfigured) {
           try {
             await supabase.from('posts').delete().eq('slug', currentPost.slug);

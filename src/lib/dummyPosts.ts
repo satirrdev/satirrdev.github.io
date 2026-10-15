@@ -10,9 +10,13 @@ export interface PostItem {
 export interface CommentItem {
   id: string;
   post_slug: string;
-  user_id: string;
+  parent_id?: string | null;
+  user_id?: string | null;
   user_email: string;
+  author_name?: string;
   content: string;
+  score?: number;
+  userVote?: number; // 1 for upvote, -1 for downvote, 0 for none
   created_at: string;
 }
 
@@ -70,6 +74,7 @@ Drop your thoughts in the comments below.`,
 const LOCAL_STORAGE_KEY = 'satirr_local_posts';
 const LOCAL_COMMENTS_KEY = 'satirr_local_comments';
 const DELETED_SLUGS_KEY = 'satirr_deleted_slugs';
+const LOCAL_VOTES_KEY = 'satirr_local_votes'; // Record user votes: { [commentId_userEmail]: 1 or -1 }
 
 export function getDeletedSlugs(): string[] {
   if (typeof window === 'undefined') return [];
@@ -153,7 +158,12 @@ export function saveLocalComment(comment: CommentItem) {
   try {
     const raw = localStorage.getItem(LOCAL_COMMENTS_KEY);
     const all: CommentItem[] = raw ? JSON.parse(raw) : [];
-    all.push(comment);
+    const index = all.findIndex(c => c.id === comment.id);
+    if (index >= 0) {
+      all[index] = comment;
+    } else {
+      all.push(comment);
+    }
     localStorage.setItem(LOCAL_COMMENTS_KEY, JSON.stringify(all));
   } catch (e) {
     console.error('Failed to save comment locally', e);
@@ -165,9 +175,37 @@ export function deleteLocalComment(id: string) {
   try {
     const raw = localStorage.getItem(LOCAL_COMMENTS_KEY);
     const all: CommentItem[] = raw ? JSON.parse(raw) : [];
-    const filtered = all.filter(c => c.id !== id);
+    // Also delete any replies attached to this comment
+    const filtered = all.filter(c => c.id !== id && c.parent_id !== id);
     localStorage.setItem(LOCAL_COMMENTS_KEY, JSON.stringify(filtered));
   } catch (e) {
     console.error('Failed to delete comment locally', e);
+  }
+}
+
+export function getLocalVote(commentId: string, userEmail: string): number {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = localStorage.getItem(LOCAL_VOTES_KEY);
+    const votes = raw ? JSON.parse(raw) : {};
+    return votes[`${commentId}_${userEmail}`] || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+export function saveLocalVote(commentId: string, userEmail: string, vote: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(LOCAL_VOTES_KEY);
+    const votes = raw ? JSON.parse(raw) : {};
+    if (vote === 0) {
+      delete votes[`${commentId}_${userEmail}`];
+    } else {
+      votes[`${commentId}_${userEmail}`] = vote;
+    }
+    localStorage.setItem(LOCAL_VOTES_KEY, JSON.stringify(votes));
+  } catch (e) {
+    console.error('Failed to save vote locally', e);
   }
 }
