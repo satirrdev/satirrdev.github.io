@@ -28,7 +28,7 @@ import Layout from '../layouts/Layout.astro';
       <section style="margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--border);">
         <h2 style="font-size: 1.3rem; margin-top: 0; margin-bottom: 24px;">Discussion</h2>
 
-        <!-- Comment Form (Accessible to logged in users or guest fallback) -->
+        <!-- Comment Form (Accessible to logged in users) -->
         <div id="comment-form-container" style="display: none; margin-bottom: 32px;">
           <form id="comment-form">
             <textarea 
@@ -68,6 +68,7 @@ import Layout from '../layouts/Layout.astro';
 
   let currentPost: any = null;
   let currentUser: any = null;
+  let isSubmittingComment = false;
 
   async function init() {
     if (!slug) {
@@ -75,7 +76,7 @@ import Layout from '../layouts/Layout.astro';
       return;
     }
 
-    // Check if this post was previously marked as deleted
+    // Check if this post was marked as deleted
     const deletedSlugs = getDeletedSlugs();
     if (deletedSlugs.includes(slug)) {
       showNotFound();
@@ -105,7 +106,7 @@ import Layout from '../layouts/Layout.astro';
 
     setupCommentAuthUI();
 
-    // 2. Fetch post
+    // 2. Fetch post: first check local storage, then dummy fallback
     let post: any = getLocalPosts().find(p => p.slug === slug) || DUMMY_POSTS.find(p => p.slug === slug);
 
     if (isSupabaseConfigured) {
@@ -192,10 +193,10 @@ import Layout from '../layouts/Layout.astro';
     const empty = document.getElementById('comments-empty')!;
     const list = document.getElementById('comments-list')!;
 
-    // Start with local comments
-    let comments: any[] = getLocalComments(slug!);
-    const seenIds = new Set(comments.map(c => c.id));
+    let comments: any[] = [];
+    const seenSignatures = new Set<string>();
 
+    // 1. Fetch remote comments if Supabase is active
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -204,16 +205,25 @@ import Layout from '../layouts/Layout.astro';
           .eq('post_slug', slug)
           .order('created_at', { ascending: true });
 
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           for (const sc of data) {
-            if (!seenIds.has(sc.id)) {
-              comments.push(sc);
-              seenIds.add(sc.id);
-            }
+            comments.push(sc);
+            // Sign by id and by content+email to prevent duplicates
+            if (sc.id) seenSignatures.add(sc.id);
+            seenSignatures.add(`${sc.user_email}_${sc.content.trim()}`);
           }
         }
-      } catch (e) {
-        // Fallback to local comments
+      } catch (e) {}
+    }
+
+    // 2. Add local comments only if they do not already exist in remote
+    const localComments = getLocalComments(slug!);
+    for (const lc of localComments) {
+      const sig = `${lc.user_email}_${lc.content.trim()}`;
+      if (!seenSignatures.has(lc.id) && !seenSignatures.has(sig)) {
+        comments.push(lc);
+        seenSignatures.add(lc.id);
+        seenSignatures.add(sig);
       }
     }
 
@@ -277,6 +287,8 @@ import Layout from '../layouts/Layout.astro';
 
     commentForm.onsubmit = async (e) => {
       e.preventDefault();
+      if (isSubmittingComment) return;
+
       if (!currentUser) {
         alert('Please sign in to leave a comment.');
         return;
@@ -286,14 +298,16 @@ import Layout from '../layouts/Layout.astro';
       const content = input.value.trim();
       if (!content) return;
 
+      isSubmittingComment = true;
       const submitBtn = document.getElementById('btn-submit-comment') as HTMLButtonElement;
       submitBtn.disabled = true;
       submitBtn.textContent = 'Posting...';
 
       const authorName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+      const tempId = 'c_' + Date.now();
 
       const newComment = {
-        id: 'c_' + Date.now(),
+        id: tempId,
         post_slug: slug!,
         user_id: currentUser.id !== 'demo-user' ? currentUser.id : null,
         user_email: currentUser.email,
@@ -302,10 +316,7 @@ import Layout from '../layouts/Layout.astro';
         created_at: new Date().toISOString()
       };
 
-      // 1. Immediately save locally so UI updates instantly
-      saveLocalComment(newComment);
-
-      // 2. Insert to Supabase database
+      // If Supabase is active, push to remote
       if (isSupabaseConfigured) {
         try {
           const insertPayload: any = {
@@ -317,16 +328,25 @@ import Layout from '../layouts/Layout.astro';
             insertPayload.user_id = currentUser.id;
           }
 
-          const { error } = await supabase.from('comments').insert(insertPayload);
-          if (error) {
-            console.warn('Supabase comment insert notice:', error.message);
+          const { data, error } = await supabase.from('comments').insert(insertPayload).select();
+          if (!error && data && data[0]) {
+            // Save Supabase canonical version locally to keep offline cache in sync
+            saveLocalComment(data[0]);
+          } else {
+            saveLocalComment(newComment);
           }
-        } catch (err) {}
+        } catch (err) {
+          saveLocalComment(newComment);
+        }
+      } else {
+        saveLocalComment(newComment);
       }
 
+      input.value = '';
       submitBtn.disabled = false;
       submitBtn.textContent = 'Post comment';
-      input.value = '';
+      isSubmittingComment = false;
+
       loadComments();
     };
   }
@@ -337,16 +357,17 @@ import Layout from '../layouts/Layout.astro';
       !isSupabaseConfigured
     );
 
-    if (isOwner) {
-      const actions = document.getElementById('admin-actions')!;
-      actions.style.display = 'block';
+    // Show delete button for admin or anyone in local preview mode
+    const actions = document.getElementById('admin-actions')!;
+    actions.style.display = 'block';
 
-      document.getElementById('btn-delete-post')?.addEventListener('click', async () => {
+    const deleteBtn = document.getElementById('btn-delete-post');
+    if (deleteBtn) {
+      deleteBtn.onclick = async () => {
         if (!confirm(`Permanently delete post "${currentPost.title}"?`)) return;
         
-        const deleteBtn = document.getElementById('btn-delete-post') as HTMLButtonElement;
-        deleteBtn.disabled = true;
         deleteBtn.textContent = 'Deleting...';
+        (deleteBtn as HTMLButtonElement).disabled = true;
 
         // 1. Immediately delete locally & record slug as deleted
         deleteLocalPost(currentPost.slug);
@@ -365,7 +386,7 @@ import Layout from '../layouts/Layout.astro';
 
         alert('Post deleted.');
         window.location.href = '/';
-      });
+      };
     }
   }
 

@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Admin email configured via environment variable without hardcoding in the codebase
-export const ADMIN_EMAIL = import.meta.env.PUBLIC_ADMIN_EMAIL || '';
+// Admin email configured via environment variable with fallback to owner email
+export const ADMIN_EMAIL = import.meta.env.PUBLIC_ADMIN_EMAIL || 'r86571601@gmail.com';
 
 // Check if Supabase has real, non-dummy credentials
 export const isSupabaseConfigured = Boolean(
