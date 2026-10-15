@@ -28,8 +28,8 @@ import Layout from '../layouts/Layout.astro';
       <section style="margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--border);">
         <h2 style="font-size: 1.3rem; margin-top: 0; margin-bottom: 24px;">Discussion</h2>
 
-        <!-- Comment Form -->
-        <div id="comment-form-container" style="margin-bottom: 32px;">
+        <!-- Comment Form (Accessible to logged in users or guest fallback) -->
+        <div id="comment-form-container" style="display: none; margin-bottom: 32px;">
           <form id="comment-form">
             <textarea 
               id="comment-input" 
@@ -38,7 +38,10 @@ import Layout from '../layouts/Layout.astro';
               required
               style="margin-bottom: 12px;"
             ></textarea>
-            <button type="submit" class="btn-primary" id="btn-submit-comment">Post comment</button>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <button type="submit" class="btn-primary" id="btn-submit-comment">Post comment</button>
+              <span id="comment-user-badge" style="font-size: 13px; color: var(--text-secondary);"></span>
+            </div>
           </form>
         </div>
 
@@ -87,13 +90,19 @@ import Layout from '../layouts/Layout.astro';
       } catch (e) {
         currentUser = null;
       }
-    } else {
-      const demoEmail = localStorage.getItem('satirr_demo_email') || 'reader@example.com';
-      currentUser = {
-        id: 'local-user',
-        email: demoEmail
-      };
     }
+
+    // Fallback: check demo session
+    if (!currentUser) {
+      const demoEmail = localStorage.getItem('satirr_demo_email');
+      if (demoEmail) {
+        currentUser = {
+          id: 'demo-user',
+          email: demoEmail
+        };
+      }
+    }
+
     setupCommentAuthUI();
 
     // 2. Fetch post
@@ -126,6 +135,7 @@ import Layout from '../layouts/Layout.astro';
     renderPost(post);
     loadComments();
     setupAdminActions();
+    setupCommentForm();
   }
 
   function showNotFound() {
@@ -164,10 +174,13 @@ import Layout from '../layouts/Layout.astro';
   function setupCommentAuthUI() {
     const formBox = document.getElementById('comment-form-container')!;
     const loginBox = document.getElementById('login-to-comment')!;
+    const badge = document.getElementById('comment-user-badge')!;
 
     if (currentUser) {
       formBox.style.display = 'block';
       loginBox.style.display = 'none';
+      const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+      badge.textContent = `Commenting as ${name}`;
     } else {
       formBox.style.display = 'none';
       loginBox.style.display = 'block';
@@ -179,7 +192,9 @@ import Layout from '../layouts/Layout.astro';
     const empty = document.getElementById('comments-empty')!;
     const list = document.getElementById('comments-list')!;
 
+    // Start with local comments
     let comments: any[] = getLocalComments(slug!);
+    const seenIds = new Set(comments.map(c => c.id));
 
     if (isSupabaseConfigured) {
       try {
@@ -190,7 +205,12 @@ import Layout from '../layouts/Layout.astro';
           .order('created_at', { ascending: true });
 
         if (!error && data) {
-          comments = data;
+          for (const sc of data) {
+            if (!seenIds.has(sc.id)) {
+              comments.push(sc);
+              seenIds.add(sc.id);
+            }
+          }
         }
       } catch (e) {
         // Fallback to local comments
@@ -207,7 +227,13 @@ import Layout from '../layouts/Layout.astro';
 
     empty.style.display = 'none';
     list.innerHTML = comments.map(c => {
-      const isOwner = currentUser && (currentUser.id === c.user_id || (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL));
+      const isOwner = currentUser && (
+        (c.user_id && currentUser.id === c.user_id) ||
+        (c.user_email && currentUser.email === c.user_email) ||
+        (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL)
+      );
+
+      const authorName = c.author_name || (c.user_email ? c.user_email.split('@')[0] : 'Reader');
       const dateStr = new Date(c.created_at).toLocaleString('en-US', {
         dateStyle: 'medium',
         timeStyle: 'short'
@@ -216,7 +242,7 @@ import Layout from '../layouts/Layout.astro';
       return `
         <li style="padding: 16px 0; border-bottom: 1px solid var(--border);">
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-            <span style="font-weight: 600; font-size: 14px;">${escapeHtml(c.user_email ? c.user_email.split('@')[0] : 'Reader')}</span>
+            <span style="font-weight: 600; font-size: 14px;">${escapeHtml(authorName)}</span>
             <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center;">
               <span>${dateStr}</span>
               ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Delete</button>` : ''}
@@ -245,11 +271,16 @@ import Layout from '../layouts/Layout.astro';
     });
   }
 
-  const commentForm = document.getElementById('comment-form');
-  if (commentForm) {
-    commentForm.addEventListener('submit', async (e) => {
+  function setupCommentForm() {
+    const commentForm = document.getElementById('comment-form');
+    if (!commentForm) return;
+
+    commentForm.onsubmit = async (e) => {
       e.preventDefault();
-      if (!currentUser) return;
+      if (!currentUser) {
+        alert('Please sign in to leave a comment.');
+        return;
+      }
 
       const input = document.getElementById('comment-input') as HTMLTextAreaElement;
       const content = input.value.trim();
@@ -259,25 +290,34 @@ import Layout from '../layouts/Layout.astro';
       submitBtn.disabled = true;
       submitBtn.textContent = 'Posting...';
 
+      const authorName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+
       const newComment = {
         id: 'c_' + Date.now(),
         post_slug: slug!,
-        user_id: currentUser.id,
+        user_id: currentUser.id !== 'demo-user' ? currentUser.id : null,
         user_email: currentUser.email,
+        author_name: authorName,
         content: content,
         created_at: new Date().toISOString()
       };
 
+      // 1. Immediately save locally so UI updates instantly
       saveLocalComment(newComment);
 
+      // 2. Insert to Supabase database
       if (isSupabaseConfigured) {
         try {
-          const { error } = await supabase.from('comments').insert({
+          const insertPayload: any = {
             post_slug: slug,
-            user_id: currentUser.id,
             user_email: currentUser.email,
             content: content
-          });
+          };
+          if (currentUser.id && currentUser.id !== 'demo-user') {
+            insertPayload.user_id = currentUser.id;
+          }
+
+          const { error } = await supabase.from('comments').insert(insertPayload);
           if (error) {
             console.warn('Supabase comment insert notice:', error.message);
           }
@@ -288,7 +328,7 @@ import Layout from '../layouts/Layout.astro';
       submitBtn.textContent = 'Post comment';
       input.value = '';
       loadComments();
-    });
+    };
   }
 
   function setupAdminActions() {
