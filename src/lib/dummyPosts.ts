@@ -69,12 +69,46 @@ Drop your thoughts in the comments below.`,
 
 const LOCAL_STORAGE_KEY = 'satirr_local_posts';
 const LOCAL_COMMENTS_KEY = 'satirr_local_comments';
+const DELETED_SLUGS_KEY = 'satirr_deleted_slugs';
+
+export function getDeletedSlugs(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DELETED_SLUGS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function markSlugDeleted(slug: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const deleted = getDeletedSlugs();
+    if (!deleted.includes(slug)) {
+      deleted.push(slug);
+      localStorage.setItem(DELETED_SLUGS_KEY, JSON.stringify(deleted));
+    }
+  } catch (e) {
+    console.error('Failed to mark slug deleted', e);
+  }
+}
+
+export function unmarkSlugDeleted(slug: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const deleted = getDeletedSlugs().filter(s => s !== slug);
+    localStorage.setItem(DELETED_SLUGS_KEY, JSON.stringify(deleted));
+  } catch (e) {}
+}
 
 export function getLocalPosts(): PostItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const deleted = getDeletedSlugs();
+    const posts: PostItem[] = raw ? JSON.parse(raw) : [];
+    return posts.filter(p => !deleted.includes(p.slug));
   } catch (e) {
     return [];
   }
@@ -83,6 +117,7 @@ export function getLocalPosts(): PostItem[] {
 export function saveLocalPost(post: PostItem) {
   if (typeof window === 'undefined') return;
   try {
+    unmarkSlugDeleted(post.slug);
     const existing = getLocalPosts().filter(p => p.slug !== post.slug);
     existing.unshift(post);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existing));
@@ -94,6 +129,7 @@ export function saveLocalPost(post: PostItem) {
 export function deleteLocalPost(slug: string) {
   if (typeof window === 'undefined') return;
   try {
+    markSlugDeleted(slug);
     const filtered = getLocalPosts().filter(p => p.slug !== slug);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
   } catch (e) {

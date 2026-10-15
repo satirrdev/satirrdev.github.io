@@ -26,19 +26,20 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, isSupabaseConfigured } from '../lib/supabase';
-  import { DUMMY_POSTS, getLocalPosts } from '../lib/dummyPosts';
+  import { DUMMY_POSTS, getLocalPosts, getDeletedSlugs } from '../lib/dummyPosts';
 
   async function loadPosts() {
     const loading = document.getElementById('loading');
     const errorBox = document.getElementById('error-box');
     const postList = document.getElementById('post-list');
+    const deletedSlugs = new Set(getDeletedSlugs());
 
-    // 1. Instantly get local posts + dummy posts
+    // 1. Instantly get local posts + dummy posts (excluding deleted)
     let posts = [...getLocalPosts()];
     const existingSlugs = new Set(posts.map(p => p.slug));
 
     for (const dp of DUMMY_POSTS) {
-      if (!existingSlugs.has(dp.slug)) {
+      if (!existingSlugs.has(dp.slug) && !deletedSlugs.has(dp.slug)) {
         posts.push(dp);
         existingSlugs.add(dp.slug);
       }
@@ -54,7 +55,7 @@ import Layout from '../layouts/Layout.astro';
 
         if (!error && data && data.length > 0) {
           for (const sp of data) {
-            if (!existingSlugs.has(sp.slug)) {
+            if (!deletedSlugs.has(sp.slug) && !existingSlugs.has(sp.slug)) {
               posts.unshift(sp);
               existingSlugs.add(sp.slug);
             }
@@ -65,12 +66,16 @@ import Layout from '../layouts/Layout.astro';
       }
     }
 
+    // Filter out any deleted slugs again to be completely certain
+    posts = posts.filter(p => !deletedSlugs.has(p.slug));
+
     // Sort newest first
     posts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     if (loading) loading.style.display = 'none';
 
     if (postList && posts.length > 0) {
+      errorBox && (errorBox.style.display = 'none');
       postList.style.display = 'block';
       postList.innerHTML = posts.map(post => {
         const dateStr = new Date(post.created_at).toISOString().split('T')[0];
@@ -83,8 +88,9 @@ import Layout from '../layouts/Layout.astro';
           </li>
         `;
       }).join('');
-    } else if (errorBox) {
-      errorBox.style.display = 'block';
+    } else {
+      if (postList) postList.style.display = 'none';
+      if (errorBox) errorBox.style.display = 'block';
     }
   }
 

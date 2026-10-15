@@ -57,7 +57,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, ADMIN_EMAIL, isSupabaseConfigured } from '../lib/supabase';
-  import { DUMMY_POSTS, getLocalPosts, deleteLocalPost, getLocalComments, saveLocalComment, deleteLocalComment } from '../lib/dummyPosts';
+  import { DUMMY_POSTS, getLocalPosts, deleteLocalPost, getDeletedSlugs, getLocalComments, saveLocalComment, deleteLocalComment } from '../lib/dummyPosts';
   import { marked } from 'marked';
 
   const params = new URLSearchParams(window.location.search);
@@ -72,6 +72,13 @@ import Layout from '../layouts/Layout.astro';
       return;
     }
 
+    // Check if this post was previously marked as deleted
+    const deletedSlugs = getDeletedSlugs();
+    if (deletedSlugs.includes(slug)) {
+      showNotFound();
+      return;
+    }
+
     // 1. Get Auth session if configured
     if (isSupabaseConfigured) {
       try {
@@ -81,18 +88,17 @@ import Layout from '../layouts/Layout.astro';
         currentUser = null;
       }
     } else {
-      // In local/demo mode, allow commenting as guest/demo user
+      const demoEmail = localStorage.getItem('satirr_demo_email') || 'reader@example.com';
       currentUser = {
         id: 'local-user',
-        email: 'reader@example.com'
+        email: demoEmail
       };
     }
     setupCommentAuthUI();
 
-    // 2. Fetch post: first check local posts & built-in fallback for instant display
+    // 2. Fetch post
     let post: any = getLocalPosts().find(p => p.slug === slug) || DUMMY_POSTS.find(p => p.slug === slug);
 
-    // If Supabase is configured with real project, fetch from database
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -124,6 +130,7 @@ import Layout from '../layouts/Layout.astro';
 
   function showNotFound() {
     document.getElementById('loading')!.style.display = 'none';
+    document.getElementById('article-container')!.style.display = 'none';
     document.getElementById('not-found')!.style.display = 'block';
   }
 
@@ -297,12 +304,23 @@ import Layout from '../layouts/Layout.astro';
       document.getElementById('btn-delete-post')?.addEventListener('click', async () => {
         if (!confirm(`Permanently delete post "${currentPost.title}"?`)) return;
         
+        const deleteBtn = document.getElementById('btn-delete-post') as HTMLButtonElement;
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'Deleting...';
+
+        // 1. Immediately delete locally & record slug as deleted
         deleteLocalPost(currentPost.slug);
 
-        if (isSupabaseConfigured && currentPost.id) {
+        // 2. Delete from Supabase database by slug and by id
+        if (isSupabaseConfigured) {
           try {
-            await supabase.from('posts').delete().eq('id', currentPost.id);
-          } catch (err) {}
+            await supabase.from('posts').delete().eq('slug', currentPost.slug);
+            if (currentPost.id) {
+              await supabase.from('posts').delete().eq('id', currentPost.id);
+            }
+          } catch (err) {
+            console.warn('Supabase delete error:', err);
+          }
         }
 
         alert('Post deleted.');
