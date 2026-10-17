@@ -152,14 +152,21 @@ import Layout from '../layouts/Layout.astro';
             content
           });
 
-          if (error && error.code === '23505') {
+          if (error) {
             publishBtn.disabled = false;
             publishBtn.textContent = 'Publish post';
-            alert('This URL slug is already taken. Please choose another.');
+            if (error.code === '23505') {
+              alert('This URL slug is already taken. Please choose another.');
+            } else {
+              alert(`Failed to save to database: ${error.message}`);
+            }
             return;
           }
-        } catch (err) {
-          // Supabase network issue
+        } catch (err: any) {
+          publishBtn.disabled = false;
+          publishBtn.textContent = 'Publish post';
+          alert(`Network error saving to database: ${err?.message || err}`);
+          return;
         }
       }
 
