@@ -2,36 +2,40 @@
 import Layout from '../layouts/Layout.astro';
 ---
 
-<Layout title="New Post | aBlog by Satirr">
-  <div class="wrap">
+<Layout title="Write Post | aBlog by Satirr">
+  <div class="wrap" style="max-width: 680px; margin: 0 auto;">
     <div id="auth-check" style="color: var(--text-secondary); font-size: 15px;">
       Checking authorization...
     </div>
 
-    <div id="unauthorized" style="display: none; color: var(--text-secondary);">
-      <h1>Access Restricted</h1>
-      <p>Only the site administrator can create new posts.</p>
-      <p><a href="/login">Sign in</a> with the authorized account or return to the <a href="/">homepage</a>.</p>
+    <div id="unauthorized" style="display: none;">
+      <h1 style="color: var(--danger); margin-bottom: 8px;">Access Denied</h1>
+      <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Only the blog owner can create new posts. Please <a href="/login">sign in</a> with an authorized account.
+      </p>
+      <a href="/" class="btn-secondary" style="font-size: 14px;">Return Home</a>
     </div>
 
     <div id="editor-container" style="display: none;">
-      <h1 style="margin-bottom: 24px;">New Post</h1>
+      <h1 style="margin-bottom: 8px;">New Post</h1>
+      <p style="color: var(--text-secondary); margin-bottom: 32px;">
+        Write notes, publish ideas, or drop code snippets.
+      </p>
 
       <form id="write-form">
         <div style="margin-bottom: 20px;">
           <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Title</label>
-          <input type="text" id="post-title-input" placeholder="e.g. Building Static Blogs with Dynamic Powers" required />
+          <input type="text" id="post-title-input" placeholder="Title of your post" required />
         </div>
 
         <div style="margin-bottom: 20px;">
           <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">URL Slug</label>
-          <input type="text" id="post-slug-input" placeholder="building-static-blogs" required />
-          <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0;">Generated automatically from title, editable if needed.</p>
+          <input type="text" id="post-slug-input" placeholder="e.g. principles-of-design" required />
         </div>
 
         <div style="margin-bottom: 20px;">
-          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Summary (Single line)</label>
-          <input type="text" id="post-summary-input" placeholder="A brief one-line overview of the topic." required />
+          <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Summary</label>
+          <input type="text" id="post-summary-input" placeholder="A one-line preview of this piece..." />
         </div>
 
         <div style="margin-bottom: 24px;">
@@ -39,14 +43,15 @@ import Layout from '../layouts/Layout.astro';
             <label style="font-weight: 600; font-size: 14px;">Content (Markdown)</label>
             <button type="button" id="btn-toggle-preview" style="background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px;">Preview</button>
           </div>
-          <textarea id="post-content-input" rows="14" placeholder="Write your post content in Markdown format..." required></textarea>
-          
-          <div id="preview-box" class="markdown-body" style="display: none; margin-top: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface);"></div>
+          <textarea id="post-content-input" rows="14" placeholder="Write markdown content here..." required></textarea>
         </div>
 
-        <div style="display: flex; gap: 12px; align-items: center;">
+        <!-- Live Preview Box -->
+        <div id="preview-box" class="markdown-body post-article-font" style="display: none; margin-bottom: 24px; padding: 18px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface);"></div>
+
+        <div style="display: flex; gap: 12px;">
           <button type="submit" class="btn-primary" id="btn-publish">Publish post</button>
-          <a href="/" style="font-size: 14px; color: var(--text-secondary);">Cancel</a>
+          <a href="/" class="btn-secondary" style="font-size: 14px; text-decoration: none;">Cancel</a>
         </div>
       </form>
     </div>
@@ -54,8 +59,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { supabase, ADMIN_EMAIL, isSupabaseConfigured } from '../lib/supabase';
-  import { saveLocalPost } from '../lib/dummyPosts';
+  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
   import { marked } from 'marked';
 
   async function checkAdmin() {
@@ -65,21 +69,17 @@ import Layout from '../layouts/Layout.astro';
 
     authCheck.style.display = 'none';
 
-    // If Supabase is configured, enforce admin check
-    if (isSupabaseConfigured) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session || !session.user || !ADMIN_EMAIL || session.user.email !== ADMIN_EMAIL) {
-          unauthorized.style.display = 'block';
-          return;
-        }
-      } catch (e) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user || !ADMIN_EMAIL || session.user.email !== ADMIN_EMAIL) {
         unauthorized.style.display = 'block';
         return;
       }
+    } catch (e) {
+      unauthorized.style.display = 'block';
+      return;
     }
 
-    // Allowed (either admin verified or preview/local mode)
     editor.style.display = 'block';
     setupEditor();
   }
@@ -143,41 +143,30 @@ import Layout from '../layouts/Layout.astro';
       publishBtn.disabled = true;
       publishBtn.textContent = 'Publishing...';
 
-      if (isSupabaseConfigured) {
-        try {
-          const { error } = await supabase.from('posts').insert({
-            title,
-            slug,
-            summary,
-            content
-          });
+      try {
+        const { error } = await supabase.from('posts').insert({
+          title,
+          slug,
+          summary,
+          content
+        });
 
-          if (error) {
-            publishBtn.disabled = false;
-            publishBtn.textContent = 'Publish post';
-            if (error.code === '23505') {
-              alert('This URL slug is already taken. Please choose another.');
-            } else {
-              alert(`Failed to save to database: ${error.message}`);
-            }
-            return;
-          }
-        } catch (err: any) {
+        if (error) {
           publishBtn.disabled = false;
           publishBtn.textContent = 'Publish post';
-          alert(`Network error saving to database: ${err?.message || err}`);
+          if (error.code === '23505') {
+            alert('This URL slug is already taken. Please choose another.');
+          } else {
+            alert(`Failed to save to database: ${error.message}`);
+          }
           return;
         }
+      } catch (err: any) {
+        publishBtn.disabled = false;
+        publishBtn.textContent = 'Publish post';
+        alert(`Network error saving to database: ${err?.message || err}`);
+        return;
       }
-
-      // Save to local storage for instant availability
-      saveLocalPost({
-        slug,
-        title,
-        summary,
-        content,
-        created_at: new Date().toISOString()
-      });
 
       publishBtn.disabled = false;
       publishBtn.textContent = 'Publish post';

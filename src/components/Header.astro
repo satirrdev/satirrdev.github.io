@@ -17,7 +17,7 @@
 </header>
 
 <script>
-  import { supabase, ADMIN_EMAIL, isSupabaseConfigured } from '../lib/supabase';
+  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
 
   async function updateAuthUI() {
     const authStatus = document.getElementById('auth-status');
@@ -25,35 +25,6 @@
     const navProfile = document.getElementById('nav-profile');
 
     if (!authStatus) return;
-
-    if (!isSupabaseConfigured) {
-      // In local demo mode: show profile and check demo admin status
-      const demoUser = localStorage.getItem('satirr_demo_email');
-      if (demoUser) {
-        const isAdmin = Boolean(ADMIN_EMAIL && demoUser === ADMIN_EMAIL);
-        if (navProfile) navProfile.style.display = 'inline-block';
-        if (navWrite) navWrite.style.display = isAdmin ? 'inline-block' : 'none';
-        
-        authStatus.innerHTML = `
-          <a href="/profile" style="color: inherit; text-decoration: none;">${demoUser.split('@')[0]}</a>
-          <button id="btn-logout" type="button">Sign out</button>
-        `;
-
-        const btnLogout = document.getElementById('btn-logout');
-        if (btnLogout) {
-          btnLogout.addEventListener('click', () => {
-            localStorage.removeItem('satirr_demo_email');
-            window.location.reload();
-          });
-        }
-        return;
-      }
-
-      if (navProfile) navProfile.style.display = 'none';
-      if (navWrite) navWrite.style.display = 'none';
-      authStatus.innerHTML = `<a href="/login" id="nav-login">Sign in</a>`;
-      return;
-    }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -63,15 +34,8 @@
         const isAdmin = Boolean(ADMIN_EMAIL && email === ADMIN_EMAIL);
         const displayName = session.user.user_metadata?.display_name || email.split('@')[0];
 
-        // Always show Profile tab for logged-in users
-        if (navProfile) {
-          navProfile.style.display = 'inline-block';
-        }
-
-        // Only show Write link for the administrator
-        if (navWrite) {
-          navWrite.style.display = isAdmin ? 'inline-block' : 'none';
-        }
+        if (navProfile) navProfile.style.display = 'inline-block';
+        if (navWrite) navWrite.style.display = isAdmin ? 'inline-block' : 'none';
 
         authStatus.innerHTML = `
           <a href="/profile" title="${email}" style="color: inherit; text-decoration: none;">${isAdmin ? 'Admin' : displayName}</a>
@@ -98,9 +62,7 @@
   }
 
   updateAuthUI();
-  if (isSupabaseConfigured) {
-    supabase.auth.onAuthStateChange(() => {
-      updateAuthUI();
-    });
-  }
+  supabase.auth.onAuthStateChange(() => {
+    updateAuthUI();
+  });
 </script>

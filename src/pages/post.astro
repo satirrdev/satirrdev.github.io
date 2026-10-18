@@ -59,18 +59,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { supabase, ADMIN_EMAIL, isSupabaseConfigured } from '../lib/supabase';
-  import { 
-    DUMMY_POSTS, 
-    getLocalPosts, 
-    deleteLocalPost, 
-    getDeletedSlugs, 
-    getLocalComments, 
-    saveLocalComment, 
-    deleteLocalComment,
-    getLocalVote,
-    saveLocalVote
-  } from '../lib/dummyPosts';
+  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
   import { marked } from 'marked';
 
   const params = new URLSearchParams(window.location.search);
@@ -79,7 +68,6 @@ import Layout from '../layouts/Layout.astro';
   let currentPost: any = null;
   let currentUser: any = null;
   let isSubmittingComment = false;
-  let cachedComments: any[] = [];
 
   async function init() {
     if (!slug) {
@@ -87,64 +75,37 @@ import Layout from '../layouts/Layout.astro';
       return;
     }
 
-    const deletedSlugs = getDeletedSlugs();
-    if (deletedSlugs.includes(slug)) {
-      showNotFound();
-      return;
-    }
-
-    // 1. Get Auth session if configured
-    if (isSupabaseConfigured) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        currentUser = session?.user || null;
-      } catch (e) {
-        currentUser = null;
-      }
-    }
-
-    // Fallback: check demo session
-    if (!currentUser) {
-      const demoEmail = localStorage.getItem('satirr_demo_email');
-      if (demoEmail) {
-        currentUser = {
-          id: 'demo-user',
-          email: demoEmail
-        };
-      }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      currentUser = session?.user || null;
+    } catch (e) {
+      currentUser = null;
     }
 
     setupCommentAuthUI();
 
-    // 2. Fetch post
-    let post: any = getLocalPosts().find(p => p.slug === slug) || DUMMY_POSTS.find(p => p.slug === slug);
+    try {
+      const { data: post, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('slug', slug)
+        .maybeSingle();
 
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase
-          .from('posts')
-          .select('*')
-          .eq('slug', slug)
-          .single();
+      document.getElementById('loading')!.style.display = 'none';
 
-        if (!error && data) {
-          post = data;
-        }
-      } catch (e) {}
-    }
+      if (error || !post) {
+        showNotFound();
+        return;
+      }
 
-    document.getElementById('loading')!.style.display = 'none';
-
-    if (!post) {
+      currentPost = post;
+      renderPost(post);
+      loadComments();
+      setupAdminActions();
+      setupCommentForm();
+    } catch (e) {
       showNotFound();
-      return;
     }
-
-    currentPost = post;
-    renderPost(post);
-    loadComments();
-    setupAdminActions();
-    setupCommentForm();
   }
 
   function showNotFound() {
@@ -201,131 +162,116 @@ import Layout from '../layouts/Layout.astro';
     const empty = document.getElementById('comments-empty')!;
     const list = document.getElementById('comments-list')!;
 
-    let comments: any[] = [];
-    const seenSignatures = new Set<string>();
+    try {
+      const { data: comments, error } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('post_slug', slug)
+        .order('created_at', { ascending: true });
 
-    // 1. Fetch remote comments if Supabase is active
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase
-          .from('comments')
-          .select('*')
-          .eq('post_slug', slug)
-          .order('created_at', { ascending: true });
+      loading.style.display = 'none';
 
-        if (!error && data && data.length > 0) {
-          for (const sc of data) {
-            comments.push(sc);
-            if (sc.id) seenSignatures.add(sc.id);
-            seenSignatures.add(`${sc.user_email}_${sc.content.trim()}`);
-          }
+      if (error || !comments || comments.length === 0) {
+        empty.style.display = 'block';
+        list.innerHTML = '';
+        return;
+      }
+
+      empty.style.display = 'none';
+
+      // Fetch votes for all comments
+      const commentIds = comments.map(c => c.id);
+      let votesData: any[] = [];
+      if (commentIds.length > 0) {
+        const { data: vData } = await supabase
+          .from('comment_votes')
+          .select('comment_id, user_email, vote')
+          .in('comment_id', commentIds);
+        votesData = vData || [];
+      }
+
+      for (const c of comments) {
+        const cVotes = votesData.filter(v => v.comment_id === c.id);
+        c.score = cVotes.reduce((sum, v) => sum + (v.vote || 0), 0);
+        const myVote = currentUser ? cVotes.find(v => v.user_email === currentUser.email) : null;
+        c.userVote = myVote ? myVote.vote : 0;
+      }
+
+      // Separate top-level comments and replies
+      const topLevel = comments.filter(c => !c.parent_id);
+      const repliesMap: { [key: string]: any[] } = {};
+      for (const c of comments) {
+        if (c.parent_id) {
+          if (!repliesMap[c.parent_id]) repliesMap[c.parent_id] = [];
+          repliesMap[c.parent_id].push(c);
         }
-      } catch (e) {}
-    }
-
-    // 2. Fetch local comments
-    const localComments = getLocalComments(slug!);
-    for (const lc of localComments) {
-      const sig = `${lc.user_email}_${lc.content.trim()}`;
-      if (!seenSignatures.has(lc.id) && !seenSignatures.has(sig)) {
-        comments.push(lc);
-        seenSignatures.add(lc.id);
-        seenSignatures.add(sig);
       }
-    }
 
-    // Calculate score & user vote status
-    const userEmail = currentUser ? currentUser.email : '';
-    for (const c of comments) {
-      const voteVal = userEmail ? getLocalVote(c.id, userEmail) : 0;
-      c.userVote = voteVal;
-      c.score = (c.score || 0) + voteVal;
-    }
+      function renderCommentHTML(c: any, isReply = false): string {
+        const isOwner = currentUser && (
+          (c.user_id && currentUser.id === c.user_id) ||
+          (c.user_email && currentUser.email === c.user_email) ||
+          (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL)
+        );
 
-    cachedComments = comments;
-    loading.style.display = 'none';
+        const authorName = c.author_name || (c.user_email ? c.user_email.split('@')[0] : 'Reader');
+        const dateStr = new Date(c.created_at).toLocaleString('en-US', {
+          dateStyle: 'medium',
+          timeStyle: 'short'
+        });
 
-    if (!comments || comments.length === 0) {
+        const replies = repliesMap[c.id] || [];
+
+        return `
+          <li style="padding: 14px 0; border-bottom: 1px solid var(--border); ${isReply ? 'margin-left: 28px; padding-left: 14px; border-left: 2px solid var(--border); border-bottom: none;' : ''}">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+              <span style="font-weight: 600; font-size: 14px;">${escapeHtml(authorName)}</span>
+              <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center;">
+                <span>${dateStr}</span>
+                ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Delete</button>` : ''}
+              </div>
+            </div>
+            
+            <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(c.content)}</p>
+
+            <!-- Vote & Reply Toolbar -->
+            <div style="display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--text-secondary);">
+              <!-- Upvote / Downvote -->
+              <div style="display: flex; align-items: center; gap: 6px; background: var(--surface); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">
+                <button class="btn-vote" data-id="${c.id}" data-type="1" data-current-vote="${c.userVote || 0}" style="background:none; border:none; cursor:pointer; color: ${c.userVote === 1 ? 'var(--accent)' : 'inherit'}; font-weight: bold; font-size: 13px; padding: 2px 4px;" title="Upvote">▲</button>
+                <span id="score-${c.id}" style="font-weight: 600; min-width: 12px; text-align: center;">${c.score || 0}</span>
+                <button class="btn-vote" data-id="${c.id}" data-type="-1" data-current-vote="${c.userVote || 0}" style="background:none; border:none; cursor:pointer; color: ${c.userVote === -1 ? 'var(--danger)' : 'inherit'}; font-weight: bold; font-size: 13px; padding: 2px 4px;" title="Downvote">▼</button>
+              </div>
+
+              <!-- Reply Button -->
+              <button class="btn-toggle-reply" data-id="${c.id}" style="background:none; border:none; cursor:pointer; color: var(--accent); font-size: 13px; padding: 0;">Reply</button>
+            </div>
+
+            <!-- Inline Reply Form Container -->
+            <div id="reply-box-${c.id}" style="display: none; margin-top: 14px; padding: 12px; background: var(--surface); border-radius: 6px; border: 1px solid var(--border);">
+              <textarea id="reply-input-${c.id}" rows="2" placeholder="Write a reply..." style="margin-bottom: 8px;"></textarea>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn-primary btn-submit-reply" data-parent-id="${c.id}" style="font-size: 13px; padding: 6px 12px;">Send Reply</button>
+                <button class="btn-secondary btn-cancel-reply" data-parent-id="${c.id}" style="font-size: 13px; padding: 6px 12px;">Cancel</button>
+              </div>
+            </div>
+
+            <!-- Nested Replies -->
+            ${replies.length > 0 ? `
+              <ul style="list-style: none; padding: 0; margin-top: 10px;">
+                ${replies.map(r => renderCommentHTML(r, true)).join('')}
+              </ul>
+            ` : ''}
+          </li>
+        `;
+      }
+
+      list.innerHTML = topLevel.map(c => renderCommentHTML(c)).join('');
+      attachCommentInteractions();
+    } catch (e) {
+      loading.style.display = 'none';
       empty.style.display = 'block';
-      list.innerHTML = '';
-      return;
     }
-
-    empty.style.display = 'none';
-
-    // Separate top-level comments and replies
-    const topLevel = comments.filter(c => !c.parent_id);
-    const repliesMap: { [key: string]: any[] } = {};
-    for (const c of comments) {
-      if (c.parent_id) {
-        if (!repliesMap[c.parent_id]) repliesMap[c.parent_id] = [];
-        repliesMap[c.parent_id].push(c);
-      }
-    }
-
-    function renderCommentHTML(c: any, isReply = false): string {
-      const isOwner = currentUser && (
-        (c.user_id && currentUser.id === c.user_id) ||
-        (c.user_email && currentUser.email === c.user_email) ||
-        (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL)
-      );
-
-      const authorName = c.author_name || (c.user_email ? c.user_email.split('@')[0] : 'Reader');
-      const dateStr = new Date(c.created_at).toLocaleString('en-US', {
-        dateStyle: 'medium',
-        timeStyle: 'short'
-      });
-
-      const replies = repliesMap[c.id] || [];
-
-      return `
-        <li style="padding: 14px 0; border-bottom: 1px solid var(--border); ${isReply ? 'margin-left: 28px; padding-left: 14px; border-left: 2px solid var(--border); border-bottom: none;' : ''}">
-          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-            <span style="font-weight: 600; font-size: 14px;">${escapeHtml(authorName)}</span>
-            <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center;">
-              <span>${dateStr}</span>
-              ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Delete</button>` : ''}
-            </div>
-          </div>
-          
-          <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(c.content)}</p>
-
-          <!-- Vote & Reply Toolbar -->
-          <div style="display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--text-secondary);">
-            <!-- Upvote / Downvote -->
-            <div style="display: flex; align-items: center; gap: 6px; background: var(--surface); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">
-              <button class="btn-vote" data-id="${c.id}" data-type="1" style="background:none; border:none; cursor:pointer; color: ${c.userVote === 1 ? 'var(--accent)' : 'inherit'}; font-weight: bold; font-size: 13px; padding: 2px 4px;" title="Upvote">▲</button>
-              <span id="score-${c.id}" style="font-weight: 600; min-width: 12px; text-align: center;">${c.score || 0}</span>
-              <button class="btn-vote" data-id="${c.id}" data-type="-1" style="background:none; border:none; cursor:pointer; color: ${c.userVote === -1 ? 'var(--danger)' : 'inherit'}; font-weight: bold; font-size: 13px; padding: 2px 4px;" title="Downvote">▼</button>
-            </div>
-
-            <!-- Reply Button -->
-            <button class="btn-toggle-reply" data-id="${c.id}" style="background:none; border:none; cursor:pointer; color: var(--accent); font-size: 13px; padding: 0;">Reply</button>
-          </div>
-
-          <!-- Inline Reply Form Container -->
-          <div id="reply-box-${c.id}" style="display: none; margin-top: 14px; padding: 12px; background: var(--surface); border-radius: 6px; border: 1px solid var(--border);">
-            <textarea id="reply-input-${c.id}" rows="2" placeholder="Write a reply..." style="margin-bottom: 8px;"></textarea>
-            <div style="display: flex; gap: 8px;">
-              <button class="btn-primary btn-submit-reply" data-parent-id="${c.id}" style="font-size: 13px; padding: 6px 12px;">Send Reply</button>
-              <button class="btn-secondary btn-cancel-reply" data-parent-id="${c.id}" style="font-size: 13px; padding: 6px 12px;">Cancel</button>
-            </div>
-          </div>
-
-          <!-- Nested Replies -->
-          ${replies.length > 0 ? `
-            <ul style="list-style: none; padding: 0; margin-top: 10px;">
-              ${replies.map(r => renderCommentHTML(r, true)).join('')}
-            </ul>
-          ` : ''}
-        </li>
-      `;
-    }
-
-    list.innerHTML = topLevel.map(c => renderCommentHTML(c)).join('');
-
-    // Attach Event Listeners
-    attachCommentInteractions();
   }
 
   function attachCommentInteractions() {
@@ -336,11 +282,9 @@ import Layout from '../layouts/Layout.astro';
         if (!confirm('Are you sure you want to delete this comment?')) return;
         
         if (id) {
-          deleteLocalComment(id);
-          if (isSupabaseConfigured) {
-            try {
-              await supabase.from('comments').delete().eq('id', id);
-            } catch (err) {}
+          const { error } = await supabase.from('comments').delete().eq('id', id);
+          if (error) {
+            alert(`Failed to delete comment: ${error.message}`);
           }
         }
         loadComments();
@@ -358,27 +302,26 @@ import Layout from '../layouts/Layout.astro';
         const target = e.currentTarget as HTMLElement;
         const commentId = target.getAttribute('data-id')!;
         const voteType = parseInt(target.getAttribute('data-type')!, 10);
-        const currentVote = getLocalVote(commentId, currentUser.email);
+        const currentVote = parseInt(target.getAttribute('data-current-vote') || '0', 10);
 
-        // Toggle vote: if already upvoted, click again removes vote
         const newVote = currentVote === voteType ? 0 : voteType;
-        saveLocalVote(commentId, currentUser.email, newVote);
 
-        if (isSupabaseConfigured) {
-          try {
-            if (newVote === 0) {
-              await supabase.from('comment_votes').delete().match({
-                comment_id: commentId,
-                user_email: currentUser.email
-              });
-            } else {
-              await supabase.from('comment_votes').upsert({
-                comment_id: commentId,
-                user_email: currentUser.email,
-                vote: newVote
-              });
-            }
-          } catch (err) {}
+        try {
+          if (newVote === 0) {
+            await supabase.from('comment_votes').delete().match({
+              comment_id: commentId,
+              user_email: currentUser.email
+            });
+          } else {
+            await supabase.from('comment_votes').upsert({
+              comment_id: commentId,
+              user_id: currentUser.id,
+              user_email: currentUser.email,
+              vote: newVote
+            }, { onConflict: 'comment_id,user_email' });
+          }
+        } catch (err: any) {
+          console.error('Vote error:', err);
         }
 
         loadComments();
@@ -424,40 +367,22 @@ import Layout from '../layouts/Layout.astro';
         submitBtn.disabled = true;
         submitBtn.textContent = 'Sending...';
 
-        const authorName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
-        const newReply = {
-          id: 'c_' + Date.now(),
-          post_slug: slug!,
+        const { error } = await supabase.from('comments').insert({
+          post_slug: slug,
           parent_id: parentId,
-          user_id: currentUser.id !== 'demo-user' ? currentUser.id : null,
+          user_id: currentUser.id,
           user_email: currentUser.email,
-          author_name: authorName,
-          content: content,
-          created_at: new Date().toISOString()
-        };
-
-        saveLocalComment(newReply);
-
-        if (isSupabaseConfigured) {
-          try {
-            const insertPayload: any = {
-              post_slug: slug,
-              parent_id: parentId,
-              user_email: currentUser.email,
-              content: content
-            };
-            if (currentUser.id && currentUser.id !== 'demo-user') {
-              insertPayload.user_id = currentUser.id;
-            }
-            const { data } = await supabase.from('comments').insert(insertPayload).select();
-            if (data && data[0]) {
-              saveLocalComment(data[0]);
-            }
-          } catch (err) {}
-        }
+          content: content
+        });
 
         submitBtn.disabled = false;
         submitBtn.textContent = 'Send Reply';
+
+        if (error) {
+          alert(`Failed to send reply: ${error.message}`);
+          return;
+        }
+
         input.value = '';
         loadComments();
       });
@@ -486,54 +411,30 @@ import Layout from '../layouts/Layout.astro';
       submitBtn.disabled = true;
       submitBtn.textContent = 'Posting...';
 
-      const authorName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
-      const tempId = 'c_' + Date.now();
-
-      const newComment = {
-        id: tempId,
-        post_slug: slug!,
-        parent_id: null,
-        user_id: currentUser.id !== 'demo-user' ? currentUser.id : null,
+      const { error } = await supabase.from('comments').insert({
+        post_slug: slug,
+        user_id: currentUser.id,
         user_email: currentUser.email,
-        author_name: authorName,
-        content: content,
-        created_at: new Date().toISOString()
-      };
+        content: content
+      });
 
-      if (isSupabaseConfigured) {
-        try {
-          const insertPayload: any = {
-            post_slug: slug,
-            user_email: currentUser.email,
-            content: content
-          };
-          if (currentUser.id && currentUser.id !== 'demo-user') {
-            insertPayload.user_id = currentUser.id;
-          }
-
-          const { data, error } = await supabase.from('comments').insert(insertPayload).select();
-          if (!error && data && data[0]) {
-            saveLocalComment(data[0]);
-          } else {
-            saveLocalComment(newComment);
-          }
-        } catch (err) {
-          saveLocalComment(newComment);
-        }
-      } else {
-        saveLocalComment(newComment);
-      }
-
-      input.value = '';
       submitBtn.disabled = false;
       submitBtn.textContent = 'Post comment';
       isSubmittingComment = false;
 
+      if (error) {
+        alert(`Failed to post comment: ${error.message}`);
+        return;
+      }
+
+      input.value = '';
       loadComments();
     };
   }
 
   function setupAdminActions() {
+    if (!currentUser || !ADMIN_EMAIL || currentUser.email !== ADMIN_EMAIL) return;
+
     const actions = document.getElementById('admin-actions')!;
     actions.style.display = 'block';
 
@@ -545,17 +446,13 @@ import Layout from '../layouts/Layout.astro';
         deleteBtn.textContent = 'Deleting...';
         (deleteBtn as HTMLButtonElement).disabled = true;
 
-        deleteLocalPost(currentPost.slug);
+        const { error } = await supabase.from('posts').delete().eq('slug', currentPost.slug);
 
-        if (isSupabaseConfigured) {
-          try {
-            await supabase.from('posts').delete().eq('slug', currentPost.slug);
-            if (currentPost.id) {
-              await supabase.from('posts').delete().eq('id', currentPost.id);
-            }
-          } catch (err) {
-            console.warn('Supabase delete error:', err);
-          }
+        if (error) {
+          alert(`Failed to delete post: ${error.message}`);
+          deleteBtn.textContent = 'Delete this post';
+          (deleteBtn as HTMLButtonElement).disabled = false;
+          return;
         }
 
         alert('Post deleted.');
