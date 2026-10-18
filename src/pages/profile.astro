@@ -56,9 +56,10 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { supabase } from '../lib/supabase';
+  import { supabase, ADMIN_EMAIL } from '../lib/supabase';
 
   let currentUser: any = null;
+  let initialDisplayName = '';
 
   const authCheck = document.getElementById('auth-check')!;
   const unauthorized = document.getElementById('unauthorized')!;
@@ -116,6 +117,8 @@ import Layout from '../layouts/Layout.astro';
         if (data.bio) bioInput.value = data.bio;
         if (data.website) websiteInput.value = data.website;
       }
+
+      initialDisplayName = nameInput.value.trim();
     } catch (e) {
       authCheck.style.display = 'none';
       unauthorized.style.display = 'block';
@@ -130,16 +133,38 @@ import Layout from '../layouts/Layout.astro';
     const bio = bioInput.value.trim();
     const website = websiteInput.value.trim();
 
+    const isAdmin = Boolean(ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL);
+    const isNameChanging = displayName !== initialDisplayName;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+    if (isNameChanging && !isAdmin) {
+      const meta = currentUser.user_metadata || {};
+      const lastChanged = meta.username_changed_at ? new Date(meta.username_changed_at).getTime() : 0;
+      const now = Date.now();
+
+      if (lastChanged && (now - lastChanged) < SEVEN_DAYS_MS) {
+        const daysLeft = Math.ceil((SEVEN_DAYS_MS - (now - lastChanged)) / (24 * 60 * 60 * 1000));
+        showMessage(`You can only change your display name once every 7 days. Please wait ${daysLeft} more day(s).`, true);
+        return;
+      }
+    }
+
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
 
     try {
-      const { error: authError } = await supabase.auth.updateUser({
-        data: {
-          display_name: displayName,
-          bio: bio,
-          website: website
-        }
+      const updateData: any = {
+        display_name: displayName,
+        bio: bio,
+        website: website
+      };
+
+      if (isNameChanging && !isAdmin) {
+        updateData.username_changed_at = new Date().toISOString();
+      }
+
+      const { data: updatedUser, error: authError } = await supabase.auth.updateUser({
+        data: updateData
       });
 
       if (authError) {
@@ -148,6 +173,12 @@ import Layout from '../layouts/Layout.astro';
         showMessage(authError.message, true);
         return;
       }
+
+      if (updatedUser?.user) {
+        currentUser = updatedUser.user;
+      }
+
+      initialDisplayName = displayName;
 
       try {
         await supabase.from('profiles').upsert({

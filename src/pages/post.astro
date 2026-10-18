@@ -204,6 +204,23 @@ import Layout from '../layouts/Layout.astro';
 
       empty.style.display = 'none';
 
+      // Fetch profiles to resolve display names
+      const userIds = [...new Set(comments.map(c => c.user_id).filter(Boolean))];
+      const profilesMap: { [userId: string]: string } = {};
+      if (userIds.length > 0) {
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('id, display_name')
+          .in('id', userIds);
+        if (pData) {
+          for (const p of pData) {
+            if (p.display_name && p.display_name.trim()) {
+              profilesMap[p.id] = p.display_name.trim();
+            }
+          }
+        }
+      }
+
       // Fetch votes for all comments
       const commentIds = comments.map(c => c.id);
       let votesData: any[] = [];
@@ -220,6 +237,9 @@ import Layout from '../layouts/Layout.astro';
         c.score = cVotes.reduce((sum, v) => sum + (v.vote || 0), 0);
         const myVote = currentUser ? cVotes.find(v => v.user_email === currentUser.email) : null;
         c.userVote = myVote ? myVote.vote : 0;
+        if (c.user_id && profilesMap[c.user_id]) {
+          c.author_name = profilesMap[c.user_id];
+        }
       }
 
       // Separate top-level comments and replies
@@ -239,6 +259,7 @@ import Layout from '../layouts/Layout.astro';
           (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL)
         );
 
+        const isAdmin = Boolean(ADMIN_EMAIL && c.user_email === ADMIN_EMAIL);
         const authorName = c.author_name || (c.user_email ? c.user_email.split('@')[0] : 'Reader');
         const dateStr = new Date(c.created_at).toLocaleString('en-US', {
           dateStyle: 'medium',
@@ -250,7 +271,10 @@ import Layout from '../layouts/Layout.astro';
         return `
           <li style="padding: 14px 0; border-bottom: 1px solid var(--border); ${isReply ? 'margin-left: 28px; padding-left: 14px; border-left: 2px solid var(--border); border-bottom: none;' : ''}">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-              <span style="font-weight: 600; font-size: 14px;">${escapeHtml(authorName)}</span>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 600; font-size: 14px;">${escapeHtml(authorName)}</span>
+                ${isAdmin ? `<span style="font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--accent); color: #fff; letter-spacing: 0.5px; text-transform: uppercase;">Admin</span>` : ''}
+              </div>
               <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center;">
                 <span>${dateStr}</span>
                 ${isOwner ? `<button class="btn-del-comment" data-id="${c.id}" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:0;">Delete</button>` : ''}
