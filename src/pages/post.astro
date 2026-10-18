@@ -73,6 +73,9 @@ import Layout from '../layouts/Layout.astro';
   const COMMENT_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
 
   function checkCommentCooldown(): boolean {
+    if (currentUser && ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL) {
+      return true;
+    }
     try {
       const last = localStorage.getItem(COMMENT_COOLDOWN_KEY);
       if (!last) return true;
