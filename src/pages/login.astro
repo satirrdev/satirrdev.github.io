@@ -3,16 +3,14 @@ import Layout from '../layouts/Layout.astro';
 ---
 
 <Layout title="Sign In | aBlog by Satirr">
+  <!-- Cloudflare Turnstile Script -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
   <div class="wrap" style="max-width: 420px; margin: 0 auto;">
     <h1 id="auth-title" style="margin-bottom: 8px;">Sign in</h1>
     <p class="intro" id="auth-subtitle" style="color: var(--text-secondary); margin-bottom: 28px;">
       Sign in to join the conversation and leave comments.
     </p>
-
-    <!-- Notice box for email confirmation disclaimer -->
-    <div style="padding: 10px 14px; border-radius: 6px; font-size: 13px; line-height: 1.5; margin-bottom: 20px; background: var(--surface); color: var(--text-secondary); border: 1px solid var(--border);">
-      Note: New users might not receive a confirmation email at the moment due to ongoing delivery adjustments. If you do receive one, consider it your lucky day.
-    </div>
 
     <!-- Error/Notice box -->
     <div id="auth-msg" style="display: none; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin-bottom: 20px;"></div>
@@ -23,16 +21,21 @@ import Layout from '../layouts/Layout.astro';
         <input type="email" id="email" placeholder="you@example.com" required />
       </div>
 
-      <div style="margin-bottom: 24px;">
+      <div style="margin-bottom: 20px;">
         <label style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px;">Password</label>
         <input type="password" id="password" placeholder="At least 6 characters" required minlength="6" />
+      </div>
+
+      <!-- Cloudflare Turnstile Widget -->
+      <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFaAfj1hf7KC0_00" data-theme="auto" data-callback="onTurnstileSuccess"></div>
       </div>
 
       <button type="submit" class="btn-primary" id="btn-submit" style="width: 100%; text-align: center; margin-bottom: 16px;">
         Sign in
       </button>
 
-      <div style="text-align: center; font-size: 14px; color: var(--text-secondary);">
+      <div style="text-align: center; font-size: 14px; color: var(--text-secondary); cursor: pointer;">
         <span id="toggle-text">Don't have an account?</span>
         <button type="button" id="btn-toggle-mode" style="background: none; border: none; color: var(--accent); cursor: pointer; padding: 0 4px; font-size: 14px;">
           Create one
@@ -46,6 +49,11 @@ import Layout from '../layouts/Layout.astro';
   import { supabase } from '../lib/supabase';
 
   let isRegister = false;
+  let turnstileToken = '';
+
+  (window as any).onTurnstileSuccess = function(token: string) {
+    turnstileToken = token;
+  };
 
   const title = document.getElementById('auth-title')!;
   const subtitle = document.getElementById('auth-subtitle')!;
@@ -98,34 +106,65 @@ import Layout from '../layouts/Layout.astro';
     const email = (document.getElementById('email') as HTMLInputElement).value.trim();
     const password = (document.getElementById('password') as HTMLInputElement).value;
 
+    // Get Turnstile token directly from input if callback hasn't fired yet
+    const turnstileInput = document.querySelector('[name="cf-turnstile-response"]') as HTMLInputElement;
+    const captchaToken = turnstileToken || turnstileInput?.value || '';
+
     submitBtn.disabled = true;
     submitBtn.textContent = isRegister ? 'Signing up...' : 'Signing in...';
 
     if (isRegister) {
-      const { data, error } = await supabase.auth.signUp({
+      const signUpOptions: any = {
         email,
         password
-      });
+      };
+
+      if (captchaToken) {
+        signUpOptions.options = {
+          captchaToken: captchaToken
+        };
+      }
+
+      const { data, error } = await supabase.auth.signUp(signUpOptions);
 
       submitBtn.disabled = false;
       submitBtn.textContent = 'Sign up';
 
       if (error) {
         showMsg(error.message, true);
+        // Reset turnstile if available
+        if ((window as any).turnstile) {
+          (window as any).turnstile.reset();
+        }
       } else {
-        showMsg('Registration successful! Please check your email for a confirmation link (if enabled) or sign in directly.', false);
+        showMsg('Registration successful! You can now sign in directly.', false);
+        // Switch to sign in mode
+        setTimeout(() => {
+          if (isRegister) toggleBtn.click();
+        }, 1500);
       }
     } else {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const signInOptions: any = {
         email,
         password
-      });
+      };
+
+      if (captchaToken) {
+        signInOptions.options = {
+          captchaToken: captchaToken
+        };
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword(signInOptions);
 
       submitBtn.disabled = false;
       submitBtn.textContent = 'Sign in';
 
       if (error) {
         showMsg(error.message, true);
+        if ((window as any).turnstile) {
+          (window as any).turnstile.reset();
+        }
       } else {
         window.location.href = '/';
       }
