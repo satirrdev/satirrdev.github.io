@@ -63,6 +63,30 @@ import Layout from '../layouts/Layout.astro';
   const msgBox = document.getElementById('auth-msg')!;
   const form = document.getElementById('auth-form') as HTMLFormElement;
 
+  const SIGNUP_LIMIT_KEY = 'satirr_signup_timestamps';
+  const MAX_SIGNUPS = 2;
+  const SIGNUP_WINDOW_MS = 5 * 60 * 60 * 1000; // 5 hours
+
+  function getRecentSignups(): number[] {
+    try {
+      const raw = localStorage.getItem(SIGNUP_LIMIT_KEY);
+      if (!raw) return [];
+      const times: number[] = JSON.parse(raw);
+      const now = Date.now();
+      return times.filter(t => now - t < SIGNUP_WINDOW_MS);
+    } catch {
+      return [];
+    }
+  }
+
+  function recordSignupAttempt() {
+    try {
+      const times = getRecentSignups();
+      times.push(Date.now());
+      localStorage.setItem(SIGNUP_LIMIT_KEY, JSON.stringify(times));
+    } catch {}
+  }
+
   toggleBtn.addEventListener('click', () => {
     isRegister = !isRegister;
     hideMsg();
@@ -106,7 +130,14 @@ import Layout from '../layouts/Layout.astro';
     const email = (document.getElementById('email') as HTMLInputElement).value.trim();
     const password = (document.getElementById('password') as HTMLInputElement).value;
 
-    // Get Turnstile token directly from input if callback hasn't fired yet
+    if (isRegister) {
+      const recentSignups = getRecentSignups();
+      if (recentSignups.length >= MAX_SIGNUPS) {
+        showMsg('Signup limit reached: Maximum 2 accounts per 5 hours from this device. Please try again later.', true);
+        return;
+      }
+    }
+
     const turnstileInput = document.querySelector('[name="cf-turnstile-response"]') as HTMLInputElement;
     const captchaToken = turnstileToken || turnstileInput?.value || '';
 
@@ -132,13 +163,12 @@ import Layout from '../layouts/Layout.astro';
 
       if (error) {
         showMsg(error.message, true);
-        // Reset turnstile if available
         if ((window as any).turnstile) {
           (window as any).turnstile.reset();
         }
       } else {
+        recordSignupAttempt();
         showMsg('Registration successful! You can now sign in directly.', false);
-        // Switch to sign in mode
         setTimeout(() => {
           if (isRegister) toggleBtn.click();
         }, 1500);

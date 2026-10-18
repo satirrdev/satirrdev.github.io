@@ -69,6 +69,28 @@ import Layout from '../layouts/Layout.astro';
   let currentUser: any = null;
   let isSubmittingComment = false;
 
+  const COMMENT_COOLDOWN_KEY = 'satirr_last_comment_time';
+  const COMMENT_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
+
+  function checkCommentCooldown(): boolean {
+    try {
+      const last = localStorage.getItem(COMMENT_COOLDOWN_KEY);
+      if (!last) return true;
+      const elapsed = Date.now() - parseInt(last, 10);
+      if (elapsed < COMMENT_COOLDOWN_MS) {
+        alert("Wow youre going soo fast, Please take a breathe");
+        return false;
+      }
+    } catch {}
+    return true;
+  }
+
+  function recordCommentTime() {
+    try {
+      localStorage.setItem(COMMENT_COOLDOWN_KEY, Date.now().toString());
+    } catch {}
+  }
+
   async function init() {
     if (!slug) {
       showNotFound();
@@ -358,6 +380,8 @@ import Layout from '../layouts/Layout.astro';
     document.querySelectorAll('.btn-submit-reply').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         if (!currentUser) return;
+        if (!checkCommentCooldown()) return;
+
         const parentId = (e.currentTarget as HTMLElement).getAttribute('data-parent-id')!;
         const input = document.getElementById(`reply-input-${parentId}`) as HTMLTextAreaElement;
         const content = input.value.trim();
@@ -383,6 +407,7 @@ import Layout from '../layouts/Layout.astro';
           return;
         }
 
+        recordCommentTime();
         input.value = '';
         loadComments();
       });
@@ -401,6 +426,8 @@ import Layout from '../layouts/Layout.astro';
         alert('Please sign in to leave a comment.');
         return;
       }
+
+      if (!checkCommentCooldown()) return;
 
       const input = document.getElementById('comment-input') as HTMLTextAreaElement;
       const content = input.value.trim();
@@ -427,6 +454,7 @@ import Layout from '../layouts/Layout.astro';
         return;
       }
 
+      recordCommentTime();
       input.value = '';
       loadComments();
     };
