@@ -60,7 +60,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, ADMIN_EMAIL } from '../lib/supabase';
-  import { marked } from 'marked';
+  import { parseMarkdown } from '../lib/markdown';
   import { waitForVerification } from '../lib/verification';
 
   async function checkAdmin() {
@@ -122,8 +122,7 @@ import Layout from '../layouts/Layout.astro';
       if (showPreview) {
         previewBtn.textContent = 'Hide Preview';
         previewBox.style.display = 'block';
-        const parsed = marked.parse(contentInput.value || '*No content yet.*');
-        previewBox.innerHTML = typeof parsed === 'string' ? parsed : '';
+        previewBox.innerHTML = parseMarkdown(contentInput.value || '*No content yet.*');
       } else {
         previewBtn.textContent = 'Preview';
         previewBox.style.display = 'none';

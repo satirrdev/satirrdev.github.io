@@ -60,7 +60,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, ADMIN_EMAIL } from '../lib/supabase';
-  import { marked } from 'marked';
+  import { parseMarkdown } from '../lib/markdown';
   import { waitForVerification } from '../lib/verification';
 
   const params = new URLSearchParams(window.location.search);
@@ -165,8 +165,7 @@ import Layout from '../layouts/Layout.astro';
     document.getElementById('post-date')!.textContent = d;
 
     const bodyContent = stripDuplicateHeading(post.content || '', post.title || '');
-    const htmlContent = marked.parse(bodyContent);
-    document.getElementById('post-content')!.innerHTML = typeof htmlContent === 'string' ? htmlContent : '';
+    document.getElementById('post-content')!.innerHTML = parseMarkdown(bodyContent);
   }
 
   function setupCommentAuthUI() {
