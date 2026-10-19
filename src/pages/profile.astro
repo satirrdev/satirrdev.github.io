@@ -57,6 +57,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase, ADMIN_EMAIL } from '../lib/supabase';
+  import { waitForVerification } from '../lib/verification';
 
   let currentUser: any = null;
   let initialDisplayName = '';
@@ -87,6 +88,8 @@ import Layout from '../layouts/Layout.astro';
   }
 
   async function loadProfile() {
+    await waitForVerification();
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || !session.user) {

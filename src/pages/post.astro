@@ -61,6 +61,7 @@ import Layout from '../layouts/Layout.astro';
 <script>
   import { supabase, ADMIN_EMAIL } from '../lib/supabase';
   import { marked } from 'marked';
+  import { waitForVerification } from '../lib/verification';
 
   const params = new URLSearchParams(window.location.search);
   const slug = params.get('slug');
@@ -99,6 +100,8 @@ import Layout from '../layouts/Layout.astro';
       showNotFound();
       return;
     }
+
+    await waitForVerification();
 
     try {
       const { data: { session } } = await supabase.auth.getSession();

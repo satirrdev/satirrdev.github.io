@@ -47,6 +47,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase } from '../lib/supabase';
+  import { waitForVerification } from '../lib/verification';
 
   let isRegister = false;
   let turnstileToken = '';
@@ -201,9 +202,11 @@ import Layout from '../layouts/Layout.astro';
     }
   });
 
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
-      window.location.href = '/';
-    }
+  waitForVerification().then(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        window.location.href = '/';
+      }
+    });
   });
 </script>

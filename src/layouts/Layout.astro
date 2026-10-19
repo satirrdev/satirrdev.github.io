@@ -28,12 +28,224 @@ const {
       rel="stylesheet"
     />
     <title>{title}</title>
+
+    <!-- Verification gate styles, inlined so the page never flashes before it is checked -->
+    <style is:inline>
+      .gate-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg, #fafaf9);
+        padding: 24px;
+        opacity: 1;
+      }
+
+      html.gate-active .gate-overlay {
+        display: flex;
+      }
+
+      html.gate-active {
+        overflow: hidden;
+      }
+
+      html.gate-active .site-header,
+      html.gate-active main,
+      html.gate-active .site-footer {
+        visibility: hidden;
+      }
+
+      .gate-box {
+        width: 100%;
+        max-width: 300px;
+        text-align: center;
+      }
+
+      .gate-spinner {
+        width: 30px;
+        height: 30px;
+        margin: 0 auto 18px;
+        border: 2px solid var(--border, #e3e2e0);
+        border-top-color: var(--accent, #c2643a);
+        border-radius: 50%;
+        animation: gate-spin 0.8s linear infinite;
+      }
+
+      @keyframes gate-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .gate-spinner {
+          animation-duration: 2s;
+        }
+      }
+
+      .gate-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text, #37352f);
+        margin: 0 0 4px;
+        font-family: inherit;
+      }
+
+      .gate-note {
+        font-size: 13px;
+        color: var(--text-secondary, #787774);
+        margin: 0 0 18px;
+        min-height: 18px;
+        font-family: inherit;
+      }
+
+      .gate-track {
+        height: 3px;
+        width: 100%;
+        background: var(--border, #e3e2e0);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .gate-fill {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--accent, #c2643a);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .gate-overlay {
+          background: var(--bg, #191919);
+        }
+
+        .gate-title {
+          color: var(--text, #e3e2e0);
+        }
+
+        .gate-note {
+          color: var(--text-secondary, #9b9a97);
+        }
+
+        .gate-track {
+          background: var(--border, #3a3a38);
+        }
+
+        .gate-spinner {
+          border-color: var(--border, #3a3a38);
+          border-top-color: var(--accent, #e08a60);
+        }
+
+        .gate-fill {
+          background: var(--accent, #e08a60);
+        }
+      }
+    </style>
+
+    <!-- Mark the document as gated before the body renders, so content stays hidden -->
+    <script is:inline>
+      (function () {
+        var KEY = 'satirr_verified';
+        var verified = false;
+        try {
+          verified = sessionStorage.getItem(KEY) === '1';
+        } catch (e) {
+          verified = false;
+        }
+
+        var resolvers = [];
+        window.__satirrGateVerified = verified;
+        window.__satirrGateReady = new Promise(function (resolve) {
+          resolvers.push(resolve);
+        });
+        window.__satirrResolveGate = function () {
+          var pending = resolvers;
+          resolvers = [];
+          for (var i = 0; i < pending.length; i++) pending[i]();
+          window.__satirrGateVerified = true;
+        };
+
+        if (verified) {
+          window.__satirrResolveGate();
+        } else {
+          document.documentElement.classList.add('gate-active');
+        }
+      })();
+    </script>
   </head>
   <body>
+    <!-- Entry verification gate, removed once the check finishes -->
+    <div class="gate-overlay" id="gate-overlay" role="status" aria-live="polite">
+      <div class="gate-box">
+        <div class="gate-spinner" aria-hidden="true"></div>
+        <p class="gate-title">Waiting for verification</p>
+        <p class="gate-note" id="gate-note">Checking your browser before loading the page</p>
+        <div class="gate-track">
+          <span class="gate-fill" id="gate-fill"></span>
+        </div>
+      </div>
+    </div>
+
     <Header />
     <main>
       <slot />
     </main>
     <Footer />
+
+    <script is:inline>
+      (function () {
+        var KEY = 'satirr_verified';
+        var DURATION = 3000;
+        var overlay = document.getElementById('gate-overlay');
+        var fill = document.getElementById('gate-fill');
+        var note = document.getElementById('gate-note');
+
+        // Already verified earlier in this session, nothing to wait for.
+        if (!document.documentElement.classList.contains('gate-active')) return;
+
+        function finish() {
+          try {
+            sessionStorage.setItem(KEY, '1');
+          } catch (e) {
+            /* storage unavailable, the check just runs again next time */
+          }
+          document.documentElement.classList.remove('gate-active');
+          if (window.__satirrResolveGate) window.__satirrResolveGate();
+          overlay.style.transition = 'opacity 0.25s ease';
+          overlay.style.opacity = '0';
+          setTimeout(function () {
+            overlay.style.display = 'none';
+          }, 260);
+        }
+
+        if (fill) {
+          fill.style.transition = 'width ' + DURATION + 'ms linear';
+          // Delay one frame so the transition has a starting width to animate from.
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              fill.style.width = '100%';
+            });
+          });
+        }
+
+        var start = Date.now();
+        function tick() {
+          var elapsed = Date.now() - start;
+          if (elapsed >= DURATION) {
+            finish();
+            return;
+          }
+          var secondsLeft = Math.ceil((DURATION - elapsed) / 1000);
+          if (note && secondsLeft > 0) {
+            note.textContent = 'Verifying, about ' + secondsLeft + 's left';
+          }
+          setTimeout(tick, 250);
+        }
+
+        tick();
+      })();
+    </script>
   </body>
 </html>

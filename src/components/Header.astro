@@ -18,6 +18,7 @@
 
 <script>
   import { supabase, ADMIN_EMAIL } from '../lib/supabase';
+  import { waitForVerification } from '../lib/verification';
 
   async function updateAuthUI() {
     const authStatus = document.getElementById('auth-status');
@@ -25,6 +26,8 @@
     const navProfile = document.getElementById('nav-profile');
 
     if (!authStatus) return;
+
+    await waitForVerification();
 
     try {
       const { data: { session } } = await supabase.auth.getSession();

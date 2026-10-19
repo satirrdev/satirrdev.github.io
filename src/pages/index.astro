@@ -26,6 +26,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { supabase } from '../lib/supabase';
+  import { waitForVerification } from '../lib/verification';
 
   async function loadPosts() {
     const loading = document.getElementById('loading');
@@ -78,5 +79,5 @@ import Layout from '../layouts/Layout.astro';
       .replace(/'/g, "&#039;");
   }
 
-  loadPosts();
+  waitForVerification().then(loadPosts);
 </script>
