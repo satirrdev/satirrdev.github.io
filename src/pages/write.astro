@@ -174,7 +174,7 @@ import Layout from '../layouts/Layout.astro';
       publishBtn.textContent = 'Publish post';
 
       alert('Post published successfully.');
-      window.location.href = `/post?slug=${encodeURIComponent(slug)}`;
+      window.location.href = `/post/${encodeURIComponent(slug)}`;
     });
   }
 

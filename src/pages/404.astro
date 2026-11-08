@@ -1,0 +1,38 @@
+---
+import Layout from '../layouts/Layout.astro';
+import PostView from '../components/PostView.astro';
+---
+
+<Layout title="404 | aBlog by Satirr">
+  <div id="page-not-found" style="display: none;">
+    <div class="wrap">
+      <h1 style="margin-bottom: 8px;">404 - Page not found</h1>
+      <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        The page you are looking for does not exist or has been moved. Return to the <a href="/">homepage</a>.
+      </p>
+    </div>
+  </div>
+
+  <div id="post-view-wrapper" style="display: none;">
+    <PostView />
+  </div>
+</Layout>
+
+<script>
+  function checkRoute() {
+    const isPostRoute = /\/post\/[^/?#]+/.test(window.location.pathname);
+    const postWrapper = document.getElementById('post-view-wrapper');
+    const pageNotFound = document.getElementById('page-not-found');
+
+    if (isPostRoute) {
+      if (postWrapper) postWrapper.style.display = 'block';
+      if (pageNotFound) pageNotFound.style.display = 'none';
+    } else {
+      if (postWrapper) postWrapper.style.display = 'none';
+      if (pageNotFound) pageNotFound.style.display = 'block';
+    }
+  }
+
+  checkRoute();
+  window.addEventListener('popstate', checkRoute);
+</script>
